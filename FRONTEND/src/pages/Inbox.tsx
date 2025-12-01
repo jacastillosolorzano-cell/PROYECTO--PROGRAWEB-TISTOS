@@ -7,6 +7,7 @@ import { useUser } from "../hooks/use-user";
 import { useToast } from "../hooks/use-toast";
 import SearchBar from "../components/SearchBar";
 import ChatList from "../components/ChatList";
+import HeaderSaldo from "../components/HeaderSaldo";
 
 interface ChatItem {
   id: number;
@@ -57,7 +58,10 @@ const Inbox: React.FC = () => {
 
         <div className="flex-1 flex items-center justify-center">
           {!searchOpen ? (
-            <h2 className="text-2xl font-bold text-center">Mensajes</h2>
+            <div className="flex items-center gap-4">
+              <h2 className="text-2xl font-bold">Mensajes</h2>
+              <HeaderSaldo /> 
+            </div>
           ) : null}
         </div>
 

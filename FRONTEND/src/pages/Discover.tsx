@@ -3,6 +3,7 @@ import { Button } from "@/components/ui/button";
 import { ArrowLeft, Search } from "lucide-react";
 import BottomNav from "@/components/BottomNav";
 import { useNavigate } from "react-router-dom";
+import HeaderSaldo from "@/components/HeaderSaldo";
 
 const sugerencias = [
   "quien creo el wifi",
@@ -27,6 +28,7 @@ const Discover = () => {
         <Button variant="ghost" size="icon" onClick={() => navigate(-1)}>
           <ArrowLeft className="w-5 h-5" />
         </Button>
+        
         <div className="flex-1 flex items-center bg-card rounded px-2">
           <Search className="w-5 h-5 text-muted-foreground mr-2" />
           <input

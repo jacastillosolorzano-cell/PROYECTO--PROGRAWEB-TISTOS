@@ -1,11 +1,12 @@
 import React from 'react';
+import { Button } from "@/components/ui/button";
 
 interface PaymentModalProps {
   isOpen: boolean;
   onClose: () => void;
   onSubmit: (event: React.FormEvent) => void;
   rechargeAmount: number;
-  setRechargeAmount: (value: number) => void;
+  rechargePrice: number;
   cardNumber: string;
   setCardNumber: (value: string) => void;
   expiryDate: string;
@@ -20,7 +21,7 @@ const PaymentModal: React.FC<PaymentModalProps> = ({
   onClose,
   onSubmit,
   rechargeAmount,
-  setRechargeAmount,
+  rechargePrice, // Agrega esto
   cardNumber,
   setCardNumber,
   expiryDate,
@@ -35,18 +36,8 @@ const PaymentModal: React.FC<PaymentModalProps> = ({
     <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 50 }}>
       <div style={{ backgroundColor: 'white', padding: '20px', borderRadius: '8px', maxWidth: '400px', width: '100%', color: 'black' }}>
         <h3 style={{ fontSize: '18px', fontWeight: 'bold', marginBottom: '16px' }}>Información de Pago Seguro</h3>
-        <p style={{ fontSize: '14px', marginBottom: '16px' }}>Ingresa los detalles de tu tarjeta para recargar monedas.</p>
+        <p style={{ fontSize: '14px', marginBottom: '16px' }}>Monto a pagar: ${rechargePrice} USD</p> 
         <form onSubmit={onSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-          <div>
-            <label style={{ display: 'block', fontSize: '14px', fontWeight: '500' }}>Monto a Recargar</label>
-            <input
-              type="number"
-              value={rechargeAmount}
-              onChange={(e) => setRechargeAmount(Number(e.target.value))}
-              style={{ width: '100%', padding: '8px', border: '1px solid #ccc', borderRadius: '4px' }}
-              min="1"
-            />
-          </div>
           <div>
             <label style={{ display: 'block', fontSize: '14px', fontWeight: '500' }}>Número de Tarjeta</label>
             <input
@@ -87,7 +78,7 @@ const PaymentModal: React.FC<PaymentModalProps> = ({
             disabled={isProcessing}
             style={{ width: '100%', padding: '8px', backgroundColor: '#3b82f6', color: 'white', border: 'none', borderRadius: '4px' }}
           >
-            {isProcessing ? 'Procesando Pago...' : `Pagar ${rechargeAmount} USD`}
+            {isProcessing ? 'Procesando Pago...' : `Pagar $${rechargePrice} USD`}
           </button>
         </form>
         <button

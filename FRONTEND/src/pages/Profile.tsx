@@ -6,17 +6,18 @@ import BottomNav from "@/components/BottomNav";
 import { useUser } from "../hooks/use-user"; // NUEVO: Import del hook
 import { useToast } from "../hooks/use-toast"; // NUEVO: Import para notificaciones
 import { formatPoints } from "../lib/utils"; // NUEVO: Para formatear puntos (de Paso 1)
-import LogOutButton from "@/pages/ventanas/LogOutButton"
+import LogOutButton from "@/pages/ventanas/LogOutButton";
+import HeaderSaldo from "@/components/HeaderSaldo";
 
 const Profile = () => {
   const navigate = useNavigate();
   const [showMenu, setShowMenu] = useState(false);
 
-  // NUEVO: Usa el hook para datos reales de usuario (nivel, puntos)
+  
   const { user, updatePoints } = useUser();
-  const { toast } = useToast(); // NUEVO: Para level up notifications
+  const { toast } = useToast(); 
 
-  // Datos simulados existentes (mantengo para avatar, stats; puedes fusionar con 'user' más adelante)
+  
   const usuario = {
     nombre: "ulima123",
     avatar: "https://is1-ssl.mzstatic.com/image/thumb/Purple211/v4/af/ba/26/afba2629-ac1e-01c3-dce7-293a45a2bc48/AppIcon-0-1x_U007epad-0-1-0-85-220-0.png/230x0w.webp", // ...existing avatar...
@@ -88,6 +89,7 @@ const Profile = () => {
         <ArrowLeft className="w-5 h-5" />
       </Button>
 
+      <HeaderSaldo />
       {/* Botón de menú */}
       <Button
         variant="ghost"
