@@ -2,12 +2,17 @@ import { Link } from "react-router-dom";
 import { ArrowLeft, Video } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
+import JavierImg from "@/components/imagenes/Javier.jpeg";
+import JoaquinImg from "@/components/imagenes/Joaquin.jfif";
+import MatiasImg from "@/components/imagenes/Matias.jpeg";
+import MarioImg from "@/components/imagenes/Mario.jpeg";
+
 const teamMembers = [
-  { name: "Javier", lema: "Transformando ideas en código", imageUrl: "https://placehold.co/200x200/F87171/FFFFFF?text=Javier" },
-  { name: "Joaquin", lema: "Apasionado por el diseño intuitivo", imageUrl: "https://placehold.co/200x200/60A5FA/FFFFFF?text=Joaquin" },
-  { name: "Matias", lema: "Creando lógica que funciona", imageUrl: "https://placehold.co/200x200/FBBF24/FFFFFF?text=Matias" },
-  { name: "Mario", lema: "Guiando al equipo hacia el éxito", imageUrl: "https://placehold.co/200x200/4ADE80/FFFFFF?text=Mario" },
-  { name: "Jesus", lema: "Amante de los pequeños detalles", imageUrl: "https://placehold.co/200x200/A78BFA/FFFFFF?text=Jesus" },
+  { name: "Javier", lema: "Transformando ideas en código", image: JavierImg },
+  { name: "Joaquin", lema: "Apasionado por el diseño intuitivo", image: JoaquinImg },
+  { name: "Matias", lema: "Creando lógica que funciona", image: MatiasImg },
+  { name: "Mario", lema: "Guiando al equipo hacia el éxito", image: MarioImg },
+  { name: "Jesus", lema: "Amante de los pequeños detalles", image: null },
 ];
 
 const AboutUs = () => {
@@ -75,11 +80,17 @@ const AboutUs = () => {
               <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-x-6 gap-y-8 text-center">
                 {teamMembers.map((member) => (
                   <div key={member.name} className="flex flex-col items-center">
-                    <img
-                      src={member.imageUrl}
-                      alt={`Foto de ${member.name}`}
-                      className="w-28 h-28 rounded-full object-cover border-2 border-primary/50"
-                    />
+                    {member.image ? (
+                      <img
+                        src={member.image}
+                        alt={`Foto de ${member.name}`}
+                        className="w-28 h-28 rounded-full object-cover border-2 border-primary/50"
+                      />
+                    ) : (
+                      <div className="w-28 h-28 rounded-full bg-muted flex items-center justify-center text-2xl font-semibold text-foreground">
+                        {member.name.charAt(0)}
+                      </div>
+                    )}
                     <div className="mt-2">
                       <p className="font-semibold text-foreground">{member.name}</p>
                       <p className="text-sm text-muted-foreground italic mt-1">

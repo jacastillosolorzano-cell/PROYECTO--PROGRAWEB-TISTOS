@@ -1,4 +1,6 @@
 import express, {Request, Response} from "express"
+import http from "http"
+import { Server as IOServer } from "socket.io"
 import dotenv from "dotenv"
 import cors from "cors"
 import bodyParser from "body-parser"
@@ -17,6 +19,29 @@ app.use(bodyParser.json())
 app.use(bodyParser.urlencoded({
     extended : true
 }))
+
+// Crear servidor HTTP y Socket.IO
+const server = http.createServer(app)
+const io = new IOServer(server, {
+    cors: { origin: process.env.FRONTEND_URL || "http://localhost:5173" }
+})
+
+io.on("connection", (socket) => {
+    console.log("Socket conectado:", socket.id)
+
+    socket.on("join_streamer_room", (streamerId: string) => {
+        try {
+            socket.join(`streamer_${streamerId}`)
+            console.log(`Socket ${socket.id} joined streamer_${streamerId}`)
+        } catch (e) {
+            console.error("Error joining room:", e)
+        }
+    })
+
+    socket.on("disconnect", () => {
+        console.log("Socket desconectado:", socket.id)
+    })
+})
 
 app.post("/usuarios/crear", async (req : Request, resp : Response) => {
     try {
@@ -395,9 +420,10 @@ app.get("/usuarios/:id_usuario/progreso", async (req : Request, resp : Response)
             return
         }
 
-        // Obtener el progreso del espectador en todos los canales
+        // Obtener el progreso del espectador en todos los canales, incluyendo nivel y streamer
         const progreso = await prisma.progresoEspectador.findMany({
-            where: { id_espectador: id_usuario }
+            where: { id_espectador: id_usuario },
+            include: { nivel: true, streamer: true }
         })
 
         // Si no tiene progreso, crear un progreso inicial por defecto
@@ -420,7 +446,8 @@ app.get("/usuarios/:id_usuario/progreso", async (req : Request, resp : Response)
                             id_streamer: streamer.id_usuario,
                             puntos_actuales: 1000, // Puntos iniciales para jugar ruleta
                             id_nivel_espectador: nivel.id_nivel_espectador
-                        }
+                        },
+                        include: { nivel: true, streamer: true }
                     })
                     return resp.status(200).json([nuevoProgreso])
                 }
@@ -483,6 +510,211 @@ app.put("/usuarios/:id_usuario/rol", async (req : Request, resp : Response) => {
     }
 })
 
-app.listen(PORT, () => {
+// Endpoint para enviar un regalo (crea EnvioRegalo y emite evento realtime)
+app.post("/regalos/enviar", async (req: Request, resp: Response) => {
+    try {
+        const { id_regalo, id_espectador, id_streamer, cantidad = 1, id_sesion } = req.body
+
+        if (!id_regalo || !id_espectador || !id_streamer) {
+            resp.status(400).json({ error: "id_regalo, id_espectador e id_streamer son requeridos" })
+            return
+        }
+
+        // Ejecutar en transacción: validar saldo, descontar monedas, crear envio y actualizar/crear progreso
+        const result = await prisma.$transaction(async (tx) => {
+            const regalo = await tx.regalo.findUnique({ where: { id_regalo } })
+            if (!regalo) throw { status: 404, message: 'Regalo no encontrado' }
+
+            const espectador = await tx.usuario.findUnique({ where: { id_usuario: id_espectador } })
+            if (!espectador) throw { status: 404, message: 'Espectador no encontrado' }
+
+            const streamer = await tx.usuario.findUnique({ where: { id_usuario: id_streamer } })
+            if (!streamer) throw { status: 404, message: 'Streamer no encontrado' }
+
+            // Perfil del espectador (saldo de monedas)
+            const perfil = await tx.perfilEspectador.findUnique({ where: { id_usuario: id_espectador } })
+            if (!perfil) throw { status: 400, message: 'Perfil de espectador no inicializado' }
+
+            const cantidadNum = Number(cantidad)
+            const monedas_usadas = Number(regalo.costo_monedas) * cantidadNum
+            const puntos_otorgados = Number(regalo.puntos_otorgados) * cantidadNum
+
+            if ((perfil.saldo_monedas ?? 0) < monedas_usadas) {
+                throw { status: 400, message: 'Saldo insuficiente', detalle: { saldo: perfil.saldo_monedas ?? 0, requerido: monedas_usadas } }
+            }
+
+            // Descontar saldo
+            await tx.perfilEspectador.update({
+                where: { id_usuario: id_espectador },
+                data: { saldo_monedas: { decrement: monedas_usadas } }
+            })
+
+            // Crear registro de envío
+            const envio = await tx.envioRegalo.create({
+                data: {
+                    id_regalo,
+                    id_espectador,
+                    id_streamer,
+                    id_sesion: id_sesion || null,
+                    cantidad: cantidadNum,
+                    monedas_usadas,
+                    puntos_otorgados
+                }
+            })
+
+            // Actualizar o crear progreso del espectador
+            let progreso = await tx.progresoEspectador.findFirst({ where: { id_espectador, id_streamer } })
+            if (progreso) {
+                await tx.progresoEspectador.update({
+                    where: { id_progreso: progreso.id_progreso },
+                    data: { puntos_actuales: { increment: puntos_otorgados } }
+                })
+                progreso = await tx.progresoEspectador.findFirst({ where: { id_espectador, id_streamer } })
+            } else {
+                const nivel = await tx.nivelEspectador.findFirst({
+                    where: { id_streamer, activo: true },
+                    orderBy: { orden: 'asc' }
+                })
+
+                if (!nivel) {
+                    throw { status: 400, message: 'No hay niveles de espectador configurados para este streamer' }
+                }
+
+                progreso = await tx.progresoEspectador.create({
+                    data: {
+                        id_espectador,
+                        id_streamer,
+                        puntos_actuales: puntos_otorgados,
+                        id_nivel_espectador: nivel.id_nivel_espectador
+                    }
+                })
+            }
+
+            return { envio, progreso, regalo, espectador, streamer }
+        })
+
+        // Emitir evento sólo al room del streamer (fuera de la transacción)
+        const payload = {
+            id_envio: result.envio.id_envio,
+            id_regalo,
+            id_espectador,
+            espectador_nombre: result.espectador.nombre,
+            id_streamer,
+            streamer_nombre: result.streamer.nombre,
+            cantidad: result.envio.cantidad,
+            monedas_usadas: result.envio.monedas_usadas,
+            puntos_otorgados: result.envio.puntos_otorgados,
+            fecha_hora: result.envio.fecha_hora
+        }
+
+        try {
+            io.to(`streamer_${id_streamer}`).emit('gift_received', payload)
+        } catch (e) {
+            console.error('Error emitiendo evento gift_received:', e)
+        }
+
+        resp.status(200).json({ envio: result.envio, progreso: result.progreso })
+    } catch (error) {
+        if (error && (error as any).status) {
+            const err = error as any
+            return resp.status(err.status).json({ error: err.message, ...(err.detalle ? { detalle: err.detalle } : {}) })
+        }
+        console.error('Error en /regalos/enviar:', error)
+        resp.status(500).json({ error: 'Error al enviar regalo' })
+    }
+})
+
+// Iniciar servidor HTTP (con Socket.IO)
+server.listen(PORT, () => {
     console.log(`Servidor iniciado en puerto ${PORT}`)
+})
+
+// Endpoint para crear un mensaje en una sesión y otorgar puntos por participación
+app.post("/sesiones/:id_sesion/mensajes", async (req: Request, resp: Response) => {
+    try {
+        const { id_sesion } = req.params
+        const { id_espectador, contenido } = req.body
+
+        if (!id_sesion || !id_espectador || !contenido) {
+            resp.status(400).json({ error: "id_sesion, id_espectador y contenido son requeridos" })
+            return
+        }
+
+        // Verificar que la sesión existe y obtener el id del streamer
+        const sesion = await prisma.sesionStreaming.findUnique({
+            where: { id_sesion }
+        })
+
+        if (!sesion) {
+            resp.status(404).json({ error: "Sesión no encontrada" })
+            return
+        }
+
+        // Verificar que el espectador existe
+        const espectador = await prisma.usuario.findUnique({ where: { id_usuario: id_espectador } })
+        if (!espectador) {
+            resp.status(404).json({ error: "Espectador no encontrado" })
+            return
+        }
+
+        // Crear el mensaje (por defecto otorga 1 punto)
+        const mensaje = await prisma.mensajeChat.create({
+            data: {
+                id_sesion,
+                id_espectador,
+                contenido,
+                puntos_otorgados: 1
+            }
+        })
+
+        // Intentar actualizar el progreso del espectador para este streamer
+        const id_streamer = sesion.id_streamer
+
+        let progreso = await prisma.progresoEspectador.findFirst({
+            where: { id_espectador, id_streamer }
+        })
+
+        if (progreso) {
+            // Incrementar puntos
+            await prisma.progresoEspectador.update({
+                where: { id_progreso: progreso.id_progreso },
+                data: { puntos_actuales: { increment: mensaje.puntos_otorgados } }
+            })
+        } else {
+            // Si no hay progreso, intentar obtener un nivel activo del streamer para crear el progreso inicial
+            const nivel = await prisma.nivelEspectador.findFirst({
+                where: { id_streamer, activo: true },
+                orderBy: { orden: 'asc' }
+            })
+
+            if (!nivel) {
+                // No se puede crear progreso sin un nivel configurado
+                resp.status(400).json({ error: "No hay niveles de espectador configurados para este streamer" })
+                return
+            }
+
+            progreso = await prisma.progresoEspectador.create({
+                data: {
+                    id_espectador,
+                    id_streamer,
+                    puntos_actuales: mensaje.puntos_otorgados,
+                    id_nivel_espectador: nivel.id_nivel_espectador
+                }
+            })
+        }
+
+        // Obtener el progreso actualizado
+        const progresoActualizado = await prisma.progresoEspectador.findFirst({
+            where: { id_espectador, id_streamer }
+        })
+
+        resp.status(200).json({
+            mensaje_id: mensaje.id_mensaje,
+            puntos_otorgados: mensaje.puntos_otorgados,
+            puntos_actuales: progresoActualizado?.puntos_actuales || 0
+        })
+    } catch (error) {
+        console.error("Error al crear mensaje/actualizar progreso:", error)
+        resp.status(500).json({ error: "Error al procesar el mensaje" })
+    }
 })

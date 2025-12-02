@@ -1,4 +1,6 @@
 import { useState, useRef, useEffect } from "react";
+import { BACKEND_URL } from '@/config';
+import { useUser } from '@/hooks/use-user';
 import { Heart, MessageCircle, Share2, Music2, Play } from "lucide-react";
 import { Button } from "./ui/button";
 import type { Video } from "./VideoFeed";
@@ -30,6 +32,57 @@ const VideoCard = ({ video, isActive }: VideoCardProps) => {
   const toggleLike = () => {
     setIsLiked(!isLiked);
     setLikes(isLiked ? likes - 1 : likes + 1);
+  };
+
+  // Inline component: muestra progreso del canal activo (puntos faltantes)
+  const ChannelProgressInline = ({ streamerId }: { streamerId?: string }) => {
+    const { user } = useUser();
+    const [data, setData] = useState<any | null>(null);
+    const [loading, setLoading] = useState(false);
+
+    useEffect(() => {
+      if (!user?.id || !streamerId) return;
+      let mounted = true;
+      setLoading(true);
+      (async () => {
+        try {
+          const res = await fetch(`${BACKEND_URL}/usuarios/${user.id}/progreso`);
+          if (!res.ok) return;
+          const arr = await res.json();
+          if (!mounted) return;
+          const found = Array.isArray(arr) ? arr.find((x: any) => x.id_streamer === streamerId || x.streamer?.id_usuario === streamerId) : null;
+          setData(found || null);
+        } catch (e) {
+          console.error('Error cargando progreso del canal:', e);
+        } finally {
+          if (mounted) setLoading(false);
+        }
+      })();
+      return () => { mounted = false; };
+    }, [streamerId, user?.id]);
+
+    if (!streamerId) return null;
+    if (loading) return <div className="text-xs text-white/80">Cargando progreso...</div>;
+    if (!data) return <div className="text-xs text-white/70">Sin progreso en este canal</div>;
+
+    const nivel = data.nivel || {};
+    const puntos_actuales = data.puntos_actuales || 0;
+    const puntos_requeridos = nivel.puntos_requeridos ?? 1000;
+    const faltan = Math.max(puntos_requeridos - puntos_actuales, 0);
+    const porcentaje = Math.min(Math.round((puntos_actuales / puntos_requeridos) * 100), 100);
+
+    return (
+      <div className="text-white text-sm bg-black/40 px-3 py-2 rounded-md shadow-md">
+        <div className="flex items-center justify-between gap-4">
+          <div className="text-xs">Canal: {data.streamer?.nombre || (data.streamer?.id_usuario ?? 'Streamer')}</div>
+          <div className="text-xs">{puntos_actuales}/{puntos_requeridos}</div>
+        </div>
+        <div className="w-full bg-white/10 rounded-full h-2 mt-2">
+          <div className="bg-gradient-to-r from-green-400 to-blue-500 h-2 rounded-full" style={{ width: `${porcentaje}%` }} />
+        </div>
+        <div className="text-xs text-white/80 mt-1">Faltan {faltan} puntos para el siguiente nivel</div>
+      </div>
+    );
   };
 
   const formatNumber = (num: number) => {
@@ -68,6 +121,11 @@ const VideoCard = ({ video, isActive }: VideoCardProps) => {
 
       {/* Right Side Actions */}
       <div className="absolute right-4 bottom-24 z-30 flex flex-col gap-6">
+
+        {/* Progreso del canal activo (inline) */}
+        <div className="mb-2">
+          <ChannelProgressInline streamerId={video.streamerId} />
+        </div>
 
         {/**Regalos */}
         <Gifts/>
@@ -140,7 +198,7 @@ const VideoCard = ({ video, isActive }: VideoCardProps) => {
         </div>
       </div>
       {isCommentModalOpen && (
-      <CommentSection onClose={() => setIsCommentModalOpen(false)} />
+      <CommentSection sessionId={video.id} onClose={() => setIsCommentModalOpen(false)} />
     )}
     </div>
   );

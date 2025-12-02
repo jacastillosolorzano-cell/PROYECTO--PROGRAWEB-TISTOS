@@ -4,6 +4,7 @@ import { X, Heart } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useEffect, useRef, useState } from 'react';
 import { useUser } from '@/hooks/use-user';
+import { BACKEND_URL } from '@/config';
 
 interface Message {
   id: number;
@@ -24,7 +25,7 @@ const timeAgo = (ts: number) => {
   return `${d}d`;
 };
 
-const CommentSection = ({ onClose }: { onClose: () => void }) => {
+const CommentSection = ({ onClose, sessionId }: { onClose: () => void; sessionId?: string }) => {
   const [nuevoMensaje, setNuevoMensaje] = useState('');
   const [mensajes, setMensajes] = useState<Message[]>([{
     id: 1,
@@ -84,23 +85,57 @@ const CommentSection = ({ onClose }: { onClose: () => void }) => {
       likes: 0,
       createdAt: Date.now(),
     };
-    
+
+    // Optimistically add message locally
     setMensajes((prev) => {
       const next = [...prev, mensajeNuevo];
       try {
         localStorage.setItem('comments_demo', JSON.stringify(next));
       } catch (e) {
-        
+        // ignore storage errors
       }
       return next;
     });
-    
-    try {
-      setCurrentUser({ points: (user?.points || 0) + 1 });
-    } catch (e) {
-      
-    }
+
+    // Reset input immediately
     setNuevoMensaje('');
+
+    // If we have a backend session id and a logged user, send message to backend
+    (async () => {
+      try {
+        if (!sessionId) {
+          // no session id: skip backend call but still grant point locally
+          setCurrentUser({ points: (user?.points || 0) + 1 });
+          return;
+        }
+
+        const res = await fetch(`${BACKEND_URL}/sesiones/${sessionId}/mensajes`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ id_espectador: user?.id, contenido: mensajeNuevo.text })
+        });
+
+        if (!res.ok) {
+          // backend error: log and still grant point locally
+          console.warn('Error al enviar mensaje al backend', await res.text());
+          setCurrentUser({ points: (user?.points || 0) + 1 });
+          return;
+        }
+
+        const data = await res.json();
+
+        // data.puntos_actuales contains the updated puntos on the server; sync locally
+        if (typeof data.puntos_actuales === 'number') {
+          setCurrentUser({ points: data.puntos_actuales });
+        } else {
+          // Fallback: increment by 1
+          setCurrentUser({ points: (user?.points || 0) + 1 });
+        }
+      } catch (e) {
+        console.error('Error enviando mensaje:', e);
+        setCurrentUser({ points: (user?.points || 0) + 1 });
+      }
+    })();
   };
 
   const handleLike = (id: number) => {

@@ -6,6 +6,62 @@ import BottomNav from "@/components/BottomNav";
 import { useUser } from "../hooks/use-user"; // NUEVO: Import del hook
 import { useToast } from "../hooks/use-toast"; // NUEVO: Import para notificaciones
 import { formatPoints } from "../lib/utils"; // NUEVO: Para formatear puntos (de Paso 1)
+import { BACKEND_URL } from '@/config';
+
+// Muestra el progreso por canal usando el endpoint de backend
+function ChannelProgress({ userId }: { userId?: string | null }) {
+  const [progresos, setProgresos] = useState<any[]>([]);
+
+  useEffect(() => {
+    if (!userId) return;
+    let mounted = true;
+    (async () => {
+      try {
+        const res = await fetch(`${BACKEND_URL}/usuarios/${userId}/progreso`);
+        if (!res.ok) {
+          console.warn('No se pudo obtener progreso desde backend', await res.text());
+          return;
+        }
+        const data = await res.json();
+        if (!mounted) return;
+        setProgresos(data || []);
+      } catch (e) {
+        console.error('Error al obtener progreso:', e);
+      }
+    })();
+    return () => { mounted = false; };
+  }, [userId]);
+
+  if (!progresos || progresos.length === 0) return null;
+
+  return (
+    <div className="mt-4">
+      <h4 className="text-sm font-semibold mb-2">Progreso por canal</h4>
+      <div className="space-y-3">
+        {progresos.map((p) => {
+          const nivel = p.nivel;
+          const streamer = p.streamer;
+          const puntos_actuales = p.puntos_actuales || 0;
+          const puntos_requeridos = nivel?.puntos_requeridos ?? 1000;
+          const faltan = Math.max(puntos_requeridos - puntos_actuales, 0);
+          const porcentaje = Math.min(Math.round((puntos_actuales / puntos_requeridos) * 100), 100);
+          return (
+            <div key={p.id_progreso} className="bg-muted p-3 rounded">
+              <div className="flex justify-between text-xs mb-1">
+                <div className="font-medium">{streamer?.nombre || streamer?.id_usuario || 'Streamer'}</div>
+                <div className="text-muted-foreground">{puntos_actuales} / {puntos_requeridos}</div>
+              </div>
+              <div className="w-full bg-black/10 rounded-full h-2 mb-1">
+                <div className="bg-gradient-to-r from-green-400 to-blue-500 h-2 rounded-full" style={{ width: `${porcentaje}%` }} />
+              </div>
+              <div className="text-xs text-muted-foreground">Faltan {faltan} puntos para "{nivel?.nombre_nivel || 'siguiente nivel'}"</div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
 import LogOutButton from "@/pages/ventanas/LogOutButton";
 import HeaderSaldo from "@/components/HeaderSaldo";
 
@@ -215,6 +271,9 @@ const Profile = () => {
             </p>
           </div>
         </div>
+
+        {/* Progreso por canal (desde backend) */}
+        <ChannelProgress userId={user?.id} />
         
         <Button 
           onClick={handleGainPoints}

@@ -11,6 +11,8 @@ export interface Video {
   comments: number;
   shares: number;
   music: string;
+  sessionId?: string;
+  streamerId?: string;
 }
 
 const mockVideos: Video[] = [
@@ -24,6 +26,8 @@ const mockVideos: Video[] = [
     comments: 234,
     shares: 89,
     music: "Summer Vibes • Chill Beats",
+    sessionId: 'session-1',
+    streamerId: 'streamer-1',
   },
   {
     id: "2",
@@ -35,6 +39,8 @@ const mockVideos: Video[] = [
     comments: 456,
     shares: 123,
     music: "Neon Dreams • Synthwave",
+    sessionId: 'session-2',
+    streamerId: 'streamer-2',
   },
   {
     id: "3",
@@ -46,6 +52,8 @@ const mockVideos: Video[] = [
     comments: 678,
     shares: 234,
     music: "Ocean Waves • Nature Sounds",
+    sessionId: 'session-3',
+    streamerId: 'streamer-3',
   },
   {
     id: "4",
@@ -57,6 +65,8 @@ const mockVideos: Video[] = [
     comments: 345,
     shares: 167,
     music: "Epic Journey • Orchestral",
+    sessionId: 'session-4',
+    streamerId: 'streamer-4',
   },
 ];
 

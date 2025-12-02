@@ -1,5 +1,6 @@
 import { useNavigate } from "react-router-dom";
 import { useState, useEffect } from "react";
+import { io } from 'socket.io-client';
 import { Button } from "@/components/ui/button";
 import { ArrowLeft, UserCheck, GraduationCap, Flame, Gift, Edit, Trash2, PlusCircle } from "lucide-react";
 import { toast } from "sonner";
@@ -48,6 +49,37 @@ const Studio = () => {
       cargarRegalos()
     }
   }, [id_streamer])
+
+  // Conectar Socket.IO y escuchar regalos en tiempo real
+  useEffect(() => {
+    if (!id_streamer) return;
+    const socket = io(BACKEND_URL, { autoConnect: true });
+
+    socket.on('connect', () => {
+      console.log('Socket conectado (frontend):', socket.id);
+      socket.emit('join_streamer_room', id_streamer);
+    });
+
+    socket.on('gift_received', (data: any) => {
+      // Disparar evento global para OverlayAnimator
+      const detail = {
+        type: 'gift',
+        from: data.espectador_nombre || data.id_espectador,
+        giftName: data.regalo?.nombre || data.id_regalo || 'Regalo',
+        points: data.puntos_otorgados || data.puntos || 0,
+        multiplier: data.cantidad || 1
+      };
+      window.dispatchEvent(new CustomEvent('tistos:overlay', { detail }));
+    });
+
+    socket.on('disconnect', () => {
+      console.log('Socket desconectado (frontend)')
+    })
+
+    return () => {
+      socket.disconnect();
+    }
+  }, [id_streamer]);
 
   const cambiarARolStreamer = async () => {
     try {
