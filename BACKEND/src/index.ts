@@ -14,6 +14,12 @@ const PORT = process.env.PORT
 const BCRYPT_ROUNDS = parseInt(process.env.BCRYPT_ROUNDS || "10")
 const prisma = new PrismaClient()
 
+// Helper: normalizar id_streamer a string|null (Prisma espera String)
+const normalizeStreamerId = (val: any): string | null => {
+    if (val === undefined || val === null) return null
+    return String(val)
+}
+
 app.use(cors())
 app.use(bodyParser.json())
 app.use(bodyParser.urlencoded({
@@ -84,7 +90,9 @@ app.post("/regalos/crear", async (req : Request, resp : Response) => {
         const data = req.body
         const { nombre, costo_monedas, puntos_otorgados, id_streamer } = data
 
-        if (!nombre || !costo_monedas || !puntos_otorgados || !id_streamer) {
+        const id_streamer_str = normalizeStreamerId(id_streamer)
+
+        if (!nombre || !costo_monedas || !puntos_otorgados || !id_streamer_str) {
             resp.status(400).json({ error: "Nombre, costo, puntos e id_streamer son requeridos" })
             return
         }
@@ -94,7 +102,7 @@ app.post("/regalos/crear", async (req : Request, resp : Response) => {
                 nombre,
                 costo_monedas: Number(costo_monedas),
                 puntos_otorgados: Number(puntos_otorgados),
-                id_streamer,
+                id_streamer: id_streamer_str,
                 activo: true
             }
         })
@@ -186,6 +194,7 @@ app.delete("/regalos/:id_regalo", async (req : Request, resp : Response) => {
 app.post("/ruleta/jugar", async (req : Request, resp : Response) => {
     try {
         const { id_espectador, puntos_apostados, id_streamer } = req.body
+        const id_streamer_str = normalizeStreamerId(id_streamer)
 
         if (!id_espectador || !puntos_apostados) {
             resp.status(400).json({ error: "id_espectador y puntos_apostados son requeridos" })
@@ -267,7 +276,7 @@ app.post("/ruleta/jugar", async (req : Request, resp : Response) => {
         const jugada = await prisma.jugadaRuleta.create({
             data: {
                 id_espectador,
-                id_streamer: id_streamer || null,
+                id_streamer: id_streamer_str,
                 puntos_apostados,
                 resultado_segmento: sectorAleatorio.label,
                 monedas_ganadas,
@@ -516,8 +525,9 @@ app.put("/usuarios/:id_usuario/rol", async (req : Request, resp : Response) => {
 app.post("/regalos/enviar", async (req: Request, resp: Response) => {
     try {
         const { id_regalo, id_espectador, id_streamer, cantidad = 1, id_sesion } = req.body
+        const id_streamer_str = normalizeStreamerId(id_streamer)
 
-        if (!id_regalo || !id_espectador || !id_streamer) {
+        if (!id_regalo || !id_espectador || !id_streamer_str) {
             resp.status(400).json({ error: "id_regalo, id_espectador e id_streamer son requeridos" })
             return
         }
@@ -530,7 +540,7 @@ app.post("/regalos/enviar", async (req: Request, resp: Response) => {
             const espectador = await tx.usuario.findUnique({ where: { id_usuario: id_espectador } })
             if (!espectador) throw { status: 404, message: 'Espectador no encontrado' }
 
-            const streamer = await tx.usuario.findUnique({ where: { id_usuario: id_streamer } })
+            const streamer = await tx.usuario.findUnique({ where: { id_usuario: id_streamer_str } })
             if (!streamer) throw { status: 404, message: 'Streamer no encontrado' }
 
             // Perfil del espectador (saldo de monedas)
@@ -556,7 +566,7 @@ app.post("/regalos/enviar", async (req: Request, resp: Response) => {
                 data: {
                     id_regalo,
                     id_espectador,
-                    id_streamer,
+                    id_streamer: id_streamer_str,
                     id_sesion: id_sesion || null,
                     cantidad: cantidadNum,
                     monedas_usadas,
@@ -565,7 +575,7 @@ app.post("/regalos/enviar", async (req: Request, resp: Response) => {
             })
 
             // Actualizar o crear progreso del espectador
-            let progreso = await tx.progresoEspectador.findFirst({ where: { id_espectador, id_streamer } })
+            let progreso = await tx.progresoEspectador.findFirst({ where: { id_espectador, id_streamer: id_streamer_str } })
             if (progreso) {
                 await tx.progresoEspectador.update({
                     where: { id_progreso: progreso.id_progreso },
@@ -574,7 +584,7 @@ app.post("/regalos/enviar", async (req: Request, resp: Response) => {
                 progreso = await tx.progresoEspectador.findFirst({ where: { id_espectador, id_streamer } })
             } else {
                 const nivel = await tx.nivelEspectador.findFirst({
-                    where: { id_streamer, activo: true },
+                    where: { id_streamer: id_streamer_str, activo: true },
                     orderBy: { orden: 'asc' }
                 })
 
@@ -585,7 +595,7 @@ app.post("/regalos/enviar", async (req: Request, resp: Response) => {
                 progreso = await tx.progresoEspectador.create({
                     data: {
                         id_espectador,
-                        id_streamer,
+                        id_streamer: id_streamer_str,
                         puntos_actuales: puntos_otorgados,
                         id_nivel_espectador: nivel.id_nivel_espectador
                     }
