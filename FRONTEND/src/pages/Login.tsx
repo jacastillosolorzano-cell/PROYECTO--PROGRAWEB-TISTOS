@@ -25,15 +25,16 @@ const Login = () => {
         },
         body: JSON.stringify({
           correo: email,
-          contrasena_hash: password
+          contrasena: password   // <-- AQUÍ ES EL CAMBIO
         })
       });
+
 
       if (resp.status === 200) {
         const usuario = await resp.json();
         // persistir usuario activo
         localStorage.setItem("tistos_current_user", JSON.stringify(usuario));
-        
+
         // Inicializar perfil de espectador
         try {
           await fetch(`${BACKEND_URL}/usuarios/${usuario.id_usuario}/inicializar-perfil`, {
@@ -45,7 +46,7 @@ const Login = () => {
         } catch (perfil_error) {
           console.error("Error al inicializar perfil:", perfil_error);
         }
-        
+
         setError("");
         navigate("/index");
       } else {
@@ -58,7 +59,7 @@ const Login = () => {
     }
   };
 
-  
+
   return (
     <div className="min-h-screen flex items-center justify-center bg-background p-4">
       <div className="w-full max-w-md">

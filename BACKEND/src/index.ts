@@ -333,42 +333,44 @@ app.get("/ruleta/historial/:id_espectador", async (req : Request, resp : Respons
     }
 })
 
-app.post("/login", async (req : Request, resp : Response) => {
+app.post("/login", async (req: Request, resp: Response) => {
     try {
-        const correo = req.body.correo
-        const contrasena = req.body.contrasena_hash
+        const { correo, contrasena } = req.body;
 
         if (!correo || !contrasena) {
-            resp.status(400).json({ error: "Correo y contraseña son requeridos" })
-            return
+            return resp.status(400).json({ error: "Correo y contraseña son requeridos" });
         }
 
+        // Buscar usuario
         const usuario = await prisma.usuario.findFirst({
-            where : {
-                email : correo
-            }
-        })
+            where: { email: correo }
+        });
 
-        if (usuario == null) {
-            resp.status(401).json({ error: "Credenciales inválidas" })
-            return
+        if (!usuario) {
+            return resp.status(401).json({ error: "Credenciales inválidas" });
         }
 
-        // Comparar la contraseña ingresada con el hash almacenado
-        const contrasenaValida = await bcrypt.compare(contrasena, usuario.contrasena_hash)
+        // Validar contraseña
+        const contrasenaValida = await bcrypt.compare(
+            contrasena,
+            usuario.contrasena_hash
+        );
 
         if (!contrasenaValida) {
-            resp.status(401).json({ error: "Credenciales inválidas" })
-            return
+            return resp.status(401).json({ error: "Credenciales inválidas" });
         }
 
-        // Retornar usuario sin información sensible
-        const { contrasena_hash: _, ...usuarioSeguro } = usuario
-        resp.status(200).json(usuarioSeguro)
+        // Retornar usuario sin contraseña
+        const { contrasena_hash: _, ...usuarioSeguro } = usuario;
+
+        return resp.status(200).json(usuarioSeguro);
+
     } catch (error) {
-        resp.status(500).json({ error: "Error al iniciar sesión" })
+        console.error(error);
+        return resp.status(500).json({ error: "Error al iniciar sesión" });
     }
-})
+});
+
 
 app.post("/usuarios/:id_usuario/inicializar-perfil", async (req : Request, resp : Response) => {
     try {
