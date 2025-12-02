@@ -5,7 +5,7 @@ import dotenv from "dotenv"
 import cors from "cors"
 import bodyParser from "body-parser"
 import bcrypt from "bcrypt"
-import { PrismaClient } from "./generated/prisma"
+import { PrismaClient, Prisma } from "./generated/prisma"
 import { PrismaClientKnownRequestError } from "./generated/prisma/runtime/library"
 
 dotenv.config()
@@ -523,7 +523,7 @@ app.post("/regalos/enviar", async (req: Request, resp: Response) => {
         }
 
         // Ejecutar en transacción: validar saldo, descontar monedas, crear envio y actualizar/crear progreso
-        const result = await prisma.$transaction(async (tx) => {
+        const result = await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
             const regalo = await tx.regalo.findUnique({ where: { id_regalo } })
             if (!regalo) throw { status: 404, message: 'Regalo no encontrado' }
 
