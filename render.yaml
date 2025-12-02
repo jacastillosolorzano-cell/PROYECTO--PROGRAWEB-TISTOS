@@ -1,0 +1,10 @@
+services:
+  - type: web
+    name: proyecto-backend
+    env: node
+    branch: main
+    root: BACKEND
+    plan: free
+    autoDeploy: true
+    buildCommand: "npm install && npx prisma generate && npm run build && cp -r src/generated dist"
+    startCommand: "npm run start"
