@@ -32,7 +32,7 @@ createRoot(document.getElementById("root")!).render(
         <SaldoProvider>  
           <Toaster />
           <Sonner />
-          <HashRouter basename = "/PROYECTO--PROGRAWEB-TISTOS/tree/main/BACKEND/">
+          <HashRouter basename = "/PROYECTO--PROGRAWEB-TISTOS/tree/main/FRONTEND/">
             <Suspense fallback={<div className="p-4">Cargando...</div>}>
               <Routes>
                 <Route path="/" element={<Login />} />
