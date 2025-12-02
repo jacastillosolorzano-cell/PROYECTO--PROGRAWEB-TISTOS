@@ -36,6 +36,7 @@
     "@types/node": "^24.10.1",
     "@types/nodemon": "^1.19.6",
     "nodemon": "^3.1.11",
+    "prisma": "^6.19.0",
     
     "ts-node": "^10.9.2",
     "ts-node-dev": "^2.0.0",
