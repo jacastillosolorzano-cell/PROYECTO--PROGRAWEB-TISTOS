@@ -1,0 +1,13 @@
+{
+  "name": "proyecto-prograweb-tistos-root",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "build": "cd BACKEND && npm install && npx prisma generate && npm run build && cp -r src/generated dist",
+    "start": "cd BACKEND && npm run start",
+    "postinstall": "cd BACKEND && npm install"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}
