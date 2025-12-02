@@ -10,4 +10,7 @@
   "engines": {
     "node": ">=18"
   }
+  ,"prisma": {
+    "schema": "BACKEND/prisma/schema.prisma"
+  }
 }
