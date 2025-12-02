@@ -7,6 +7,7 @@ import bodyParser from "body-parser"
 import bcrypt from "bcrypt"
 import { PrismaClient } from "./generated/prisma"
 import { PrismaClientKnownRequestError } from "./generated/prisma/runtime/library"
+import { v4 as uuidv4 } from "uuid";
 
 dotenv.config()
 const app = express()
@@ -27,21 +28,50 @@ const io = new IOServer(server, {
 })
 
 io.on("connection", (socket) => {
-    console.log("Socket conectado:", socket.id)
+    console.log("Socket conectado:", socket.id);
 
-    socket.on("join_streamer_room", (streamerId: string) => {
+    // Unirse a una sala de stream
+    socket.on("join_stream", (data: { streamId: string; role: "streamer" | "viewer" }) => {
         try {
-            socket.join(`streamer_${streamerId}`)
-            console.log(`Socket ${socket.id} joined streamer_${streamerId}`)
+            const room = `stream_${data.streamId}`;
+            socket.join(room);
+            console.log(`${data.role} joined ${room}`);
         } catch (e) {
-            console.error("Error joining room:", e)
+            console.error("Error joining stream room:", e);
         }
-    })
+    });
+
+    // Señalización WebRTC
+    socket.on("stream-offer", (data) => {
+        socket.to(`stream_${data.streamId}`).emit("stream-offer", data);
+    });
+
+    socket.on("stream-answer", (data) => {
+        socket.to(`stream_${data.streamId}`).emit("stream-answer", data);
+    });
+
+    socket.on("ice-candidate", (data) => {
+        socket.to(`stream_${data.streamId}`).emit("ice-candidate", data);
+    });
+
+    // Chat en tiempo real
+    socket.on("chat-message", async (data) => {
+        const { streamId, id_espectador, contenido } = data;
+
+        // Guardar en DB
+        const mensaje = await prisma.mensajeChat.create({
+            data: { id_sesion: streamId, id_espectador, contenido, puntos_otorgados: 1 }
+        });
+
+        // Emitir a todos en la sala
+        io.to(`stream_${streamId}`).emit("chat-message", mensaje);
+    });
 
     socket.on("disconnect", () => {
-        console.log("Socket desconectado:", socket.id)
-    })
-})
+        console.log("Socket desconectado:", socket.id);
+    });
+});
+
 
 app.post("/usuarios/crear", async (req : Request, resp : Response) => {
     try {
@@ -626,10 +656,77 @@ app.post("/regalos/enviar", async (req: Request, resp: Response) => {
     }
 })
 
-// Iniciar servidor HTTP (con Socket.IO)
-server.listen(PORT, () => {
-    console.log(`Servidor iniciado en puerto ${PORT}`)
-})
+
+
+//Socket.IO para streaming + chat
+app.post("/streams/crear", async (req: Request, resp: Response) => {
+    try {
+        const { id_streamer, titulo } = req.body;
+
+        if (!id_streamer || !titulo) {
+            return resp.status(400).json({ error: "id_streamer y titulo son requeridos" });
+        }
+
+        const streamId = uuidv4();
+
+        // Crear la sesión de streaming en la base de datos
+        const sesion = await prisma.sesionStreaming.create({
+            data: {
+                id_sesion: streamId,
+                id_streamer,
+                titulo,
+                fecha_inicio: new Date()
+            }
+        });
+
+        const link = `${process.env.FRONTEND_URL || "http://localhost:5173"}/stream/${streamId}`;
+        resp.status(200).json({ streamId, link });
+
+    } catch (error) {
+        console.error("Error al crear stream:", error);
+        resp.status(500).json({ error: "Error al crear stream" });
+    }
+});
+
+//Endpoint para finalizar sesión
+app.post("/streams/:id_sesion/finalizar", async (req: Request, resp: Response) => {
+    try {
+        const { id_sesion } = req.params;
+
+        // Validación: id_sesion no puede ser undefined
+        if (!id_sesion) {
+            return resp.status(400).json({ error: "id_sesion es requerido" });
+        }
+
+        // Buscar la sesión
+        const sesion = await prisma.sesionStreaming.findUnique({ where: { id_sesion } });
+        if (!sesion) return resp.status(404).json({ error: "Sesión no encontrada" });
+
+        // Calcular fecha fin y duración
+        const fecha_fin = new Date();
+        const duracion = sesion.fecha_inicio
+            ? Math.floor((fecha_fin.getTime() - sesion.fecha_inicio.getTime()) / 60000)
+            : null;
+
+        // Preparar datos para update
+        const dataUpdate: any = { fecha_fin };
+        if (duracion !== null) dataUpdate.duracion_minutos = duracion; // <-- aquí se evita undefined
+
+        // Actualizar sesión
+        const actualizada = await prisma.sesionStreaming.update({
+            where: { id_sesion },
+            data: dataUpdate
+        });
+
+        resp.status(200).json({ message: "Sesión finalizada", sesion: actualizada });
+    } catch (error) {
+        console.error("Error al finalizar sesión:", error);
+        resp.status(500).json({ error: "Error al finalizar sesión" });
+    }
+});
+
+
+
 
 // Endpoint para crear un mensaje en una sesión y otorgar puntos por participación
 app.post("/sesiones/:id_sesion/mensajes", async (req: Request, resp: Response) => {
@@ -719,4 +816,9 @@ app.post("/sesiones/:id_sesion/mensajes", async (req: Request, resp: Response) =
         console.error("Error al crear mensaje/actualizar progreso:", error)
         resp.status(500).json({ error: "Error al procesar el mensaje" })
     }
+})
+
+// Iniciar servidor HTTP (con Socket.IO)
+server.listen(PORT, () => {
+    console.log(`Servidor iniciado en puerto ${PORT}`)
 })

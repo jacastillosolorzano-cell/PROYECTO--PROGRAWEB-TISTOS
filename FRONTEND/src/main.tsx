@@ -5,7 +5,7 @@ import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { BrowserRouter, Routes, Route, HashRouter } from "react-router-dom";
+import { BrowserRouter, Routes, Route, HashRouter, useParams } from "react-router-dom";
 import { SaldoProvider } from './contexts/SaldoContext'; 
 
 
@@ -22,8 +22,13 @@ const Inbox = lazy(() => import("./pages/Inbox"));
 const Create = lazy(() => import("./pages/Create"));
 const NotFound = lazy(() => import("./pages/NotFound"));
 const ChatView = lazy(() => import("./pages/ChatView"));
-
+const Viewer = lazy(() => import("./pages/Viewer"));
 const queryClient = new QueryClient();
+
+const ViewerWrapper = () => {
+  const { id_sesion } = useParams<{ id_sesion: string }>();
+  return id_sesion ? <Viewer streamId={id_sesion} /> : <div>Stream no encontrado</div>;
+};
 
 createRoot(document.getElementById("root")!).render(
   <React.StrictMode>
@@ -50,6 +55,7 @@ createRoot(document.getElementById("root")!).render(
                 <Route path="/studio" element={<Studio />} />
                 <Route path="/create" element={<Create />} />
                 <Route path="*" element={<NotFound />} />
+                <Route path="/viewer/:id_sesion" element={<ViewerWrapper />} />
               </Routes>
             </Suspense>
             <Toaster />
