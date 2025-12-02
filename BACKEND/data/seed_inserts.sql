@@ -26,8 +26,6 @@ INSERT INTO "Usuario" ("id_usuario","nombre","email","contrasena_hash","rol","fe
 INSERT INTO "PerfilEspectador" ("id_usuario","saldo_monedas","fecha_creacion") VALUES
 ('997800b7-14de-4c33-95ca-a551d5738eaa', 250, NOW());
 
-INSERT INTO "PerfilStreamer" ("id_usuario","horas_transmitidas_total","id_nivel_streamer","fecha_creacion") VALUES
-('1f4a9c2e-8b3c-4d2a-9f6b-2e1b3c4d5e6f', 120, '2c9b7e1a-3d4f-4b2a-8c6d-7e5f4a3b2c1d', NOW());
 
 -- 3) Niveles
 INSERT INTO "NivelStreamer" ("id_nivel_streamer","nombre_nivel","orden","horas_requeridas") VALUES
@@ -35,6 +33,10 @@ INSERT INTO "NivelStreamer" ("id_nivel_streamer","nombre_nivel","orden","horas_r
 
 INSERT INTO "NivelEspectador" ("id_nivel_espectador","id_streamer","nombre_nivel","orden","puntos_requeridos","activo") VALUES
 ('3e7a1b2c-5d6f-4a3b-9d8c-6b5a4f3e2d1c','1f4a9c2e-8b3c-4d2a-9f6b-2e1b3c4d5e6f','Fan Inicial',1,0, true);
+
+-- Mover PerfilStreamer después de crear NivelStreamer para respetar FK
+INSERT INTO "PerfilStreamer" ("id_usuario","horas_transmitidas_total","id_nivel_streamer","fecha_creacion") VALUES
+('1f4a9c2e-8b3c-4d2a-9f6b-2e1b3c4d5e6f', 120, '2c9b7e1a-3d4f-4b2a-8c6d-7e5f4a3b2c1d', NOW());
 
 -- 4) Progreso de espectador
 INSERT INTO "ProgresoEspectador" ("id_progreso","id_espectador","id_streamer","puntos_actuales","id_nivel_espectador","fecha_hora") VALUES
