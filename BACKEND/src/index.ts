@@ -9,6 +9,7 @@ import bcrypt from "bcrypt";
 import { PrismaClient } from "./generated/prisma/index.js";
 import { PrismaClientKnownRequestError } from "./generated/prisma/runtime/library.js";
 import { v4 as uuidv4 } from "uuid";
+import fs from "fs";
 
 // Normaliza el id del streamer (puedes ajustar la lógica según tus necesidades)
 function normalizeStreamerId(id: any): string {
@@ -220,6 +221,13 @@ app.post("/regalos/crear", async (req: Request, resp: Response) => {
             return
         }
 
+        // Verificar que el streamer exista para evitar violación de FK
+        const streamerExists = await prisma.usuario.findUnique({ where: { id_usuario: id_streamer_str } });
+        if (!streamerExists) {
+            resp.status(400).json({ error: "El id_streamer no existe" });
+            return
+        }
+
         const regalo = await prisma.regalo.create({
             data: {
                 nombre,
@@ -233,7 +241,19 @@ app.post("/regalos/crear", async (req: Request, resp: Response) => {
         resp.status(200).json(regalo)
     } catch (error) {
         const prismaError = error as PrismaClientKnownRequestError
-        console.error('Error en /regalos/crear:', error);
+        // Registrar detalle de error en archivo temporal para diagnóstico local
+        try {
+            const dump = {
+                time: new Date().toISOString(),
+                path: '/regalos/crear',
+                message: (error as any)?.message || String(error),
+                stack: (error as any)?.stack || null
+            }
+            fs.appendFileSync('error_debug.log', JSON.stringify(dump) + "\n")
+        } catch (e) {
+            // no-op
+        }
+        console.error('Error en /regalos/crear:', (error as any)?.message || error);
         resp.status(500).json({ error: "Error al crear el regalo" })
     }
 })
