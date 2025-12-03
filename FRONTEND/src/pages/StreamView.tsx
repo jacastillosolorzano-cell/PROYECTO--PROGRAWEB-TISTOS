@@ -2,9 +2,8 @@ import React, { useEffect, useRef, useState } from "react";
 import { useParams } from "react-router-dom";
 import io from "socket.io-client";
 
-const socket = io("http://localhost:5002", {
-    transports: ["websocket"],
-});
+const socket = io(process.env.VITE_BACKEND_URL, { transports: ["websocket"] });
+
 
 const StreamView = () => {
     const { id_sesion } = useParams();
