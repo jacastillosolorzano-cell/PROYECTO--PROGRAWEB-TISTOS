@@ -206,11 +206,16 @@ app.post("/usuarios/crear", async (req: Request, resp: Response) => {
 app.post("/regalos/crear", async (req: Request, resp: Response) => {
     try {
         const data = req.body
-        const { nombre, costo_monedas, puntos_otorgados, id_streamer } = data
+
+        // Aceptar nombres de campos antiguos y nuevos: { costo, puntos } o { costo_monedas, puntos_otorgados }
+        const nombre = data.nombre
+        const costo = data.costo_monedas ?? data.costo
+        const puntos = data.puntos_otorgados ?? data.puntos
+        const id_streamer = data.id_streamer
 
         const id_streamer_str = normalizeStreamerId(id_streamer)
 
-        if (!nombre || !costo_monedas || !puntos_otorgados || !id_streamer_str) {
+        if (!nombre || !costo || !puntos || !id_streamer_str) {
             resp.status(400).json({ error: "Nombre, costo, puntos e id_streamer son requeridos" })
             return
         }
@@ -218,8 +223,8 @@ app.post("/regalos/crear", async (req: Request, resp: Response) => {
         const regalo = await prisma.regalo.create({
             data: {
                 nombre,
-                costo_monedas: Number(costo_monedas),
-                puntos_otorgados: Number(puntos_otorgados),
+                costo_monedas: Number(costo),
+                puntos_otorgados: Number(puntos),
                 id_streamer: id_streamer_str,
                 activo: true
             }
@@ -264,8 +269,11 @@ app.put("/regalos/:id_regalo", async (req: Request, resp: Response) => {
         const actualizaciones: any = {}
 
         if (data.nombre) actualizaciones.nombre = data.nombre
+        // Aceptar ambos nombres de campo para compatibilidad
         if (data.costo_monedas !== undefined) actualizaciones.costo_monedas = Number(data.costo_monedas)
+        if (data.costo !== undefined) actualizaciones.costo_monedas = Number(data.costo)
         if (data.puntos_otorgados !== undefined) actualizaciones.puntos_otorgados = Number(data.puntos_otorgados)
+        if (data.puntos !== undefined) actualizaciones.puntos_otorgados = Number(data.puntos)
         if (data.activo !== undefined) actualizaciones.activo = data.activo
 
         const regalo = await prisma.regalo.update({
