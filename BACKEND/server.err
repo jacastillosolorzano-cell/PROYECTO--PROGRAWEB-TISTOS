@@ -1,6 +1,6 @@
-node:events:496
-      throw er; // Unhandled 'error' event
-      ^
+JSON inválido en la petición
+JSON inválido en la petición
+     ^
 
 Error: listen EADDRINUSE: address already in use :::5002
     at Server.setupListenHandle [as _listen2] (node:net:1939:16)
