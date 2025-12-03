@@ -33,7 +33,7 @@ createRoot(document.getElementById("root")!).render(
           <Toaster />
           <Sonner />
 
-          <HashRouter basename={import.meta.env.BASE_URL}>
+          <HashRouter>
             <Suspense fallback={<div className="p-4">Cargando...</div>}>
               <Routes>
                 {/* Auth */}
