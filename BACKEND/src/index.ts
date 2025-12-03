@@ -6,7 +6,7 @@ import dotenv from "dotenv";
 import cors from "cors";
 import bodyParser from "body-parser";
 import bcrypt from "bcrypt";
-import { PrismaClient } from "./generated/prisma";
+import { PrismaClient } from "./generated/prisma/index.js";
 import { PrismaClientKnownRequestError } from "./generated/prisma/runtime/library";
 import { v4 as uuidv4 } from "uuid";
 
