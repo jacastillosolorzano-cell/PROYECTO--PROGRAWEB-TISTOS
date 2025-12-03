@@ -7,7 +7,7 @@ import cors from "cors";
 import bodyParser from "body-parser";
 import bcrypt from "bcrypt";
 import { PrismaClient } from "./generated/prisma/index.js";
-import { PrismaClientKnownRequestError } from "./generated/prisma/runtime/library";
+import { PrismaClientKnownRequestError } from "./generated/prisma/runtime/library.js";
 import { v4 as uuidv4 } from "uuid";
 
 // Normaliza el id del streamer (puedes ajustar la lógica según tus necesidades)
