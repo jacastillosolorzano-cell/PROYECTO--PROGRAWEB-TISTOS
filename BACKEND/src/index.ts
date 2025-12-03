@@ -24,6 +24,16 @@ const PORT = process.env.PORT;
 const BCRYPT_ROUNDS = parseInt(process.env.BCRYPT_ROUNDS || "10");
 const prisma = new PrismaClient();
 
+// Logger seguro: muestra mensaje y código en dev, evita stack en producción
+function logErrorSafe(context: string, error: any) {
+    const msg = (error && error.message) ? error.message : String(error);
+    console.error(`[ERROR] ${context}: ${msg}`);
+    if (process.env.NODE_ENV !== 'production') {
+        // En entornos de desarrollo todavía podemos imprimir el error completo
+        console.error(error);
+    }
+}
+
 app.use(cors());
 app.use(bodyParser.json());
 app.use(bodyParser.urlencoded({ extended: true }));
@@ -417,7 +427,7 @@ app.post("/ruleta/jugar", async (req : Request, resp : Response) => {
             puntos_actuales: progresoActualizado?.puntos_actuales || 0
         })
     } catch (error) {
-        console.error("Error en ruleta:", error)
+        logErrorSafe('ruleta', error);
         resp.status(500).json({ error: "Error al procesar la jugada de ruleta" })
     }
 })
@@ -469,7 +479,7 @@ app.post("/login", async (req: Request, resp: Response) => {
         resp.status(200).json(usuarioSeguro);
 
     } catch (error) {
-        console.error(error);
+        logErrorSafe('login', error);
         resp.status(500).json({ error: "Error al iniciar sesión" });
     }
 });
@@ -527,7 +537,7 @@ app.post("/streams/crear", async (req: Request, resp: Response) => {
         resp.status(200).json({ streamId, link });
 
     } catch (error) {
-        console.error("Error al crear stream:", error);
+        logErrorSafe('crear_stream', error);
         resp.status(500).json({ error: "Error al crear stream" });
     }
 });
@@ -597,6 +607,18 @@ app.post("/sesiones/:id_sesion/mensajes", async (req: Request, resp: Response) =
 // =================================================================
 //                    INICIAR SERVIDOR
 // =================================================================
+// Middleware global de manejo de errores (no exponer stack/vars sensibles)
+app.use((err: any, req: Request, resp: Response, next: any) => {
+    logErrorSafe('unhandled_error', err);
+    try {
+        // Si ya se envió una respuesta, delegar
+        if (resp.headersSent) return next(err);
+        resp.status(500).json({ error: 'Internal server error' });
+    } catch (e) {
+        // En caso de fallo en manejo de errores, escribir log mínimo
+        console.error('Error handling failed');
+    }
+});
 server.listen(PORT, () => {
     console.log(`Servidor iniciado en puerto ${PORT}`);
 });
