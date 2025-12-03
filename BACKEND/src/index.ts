@@ -233,6 +233,7 @@ app.post("/regalos/crear", async (req: Request, resp: Response) => {
         resp.status(200).json(regalo)
     } catch (error) {
         const prismaError = error as PrismaClientKnownRequestError
+        console.error('Error en /regalos/crear:', error);
         resp.status(500).json({ error: "Error al crear el regalo" })
     }
 })
