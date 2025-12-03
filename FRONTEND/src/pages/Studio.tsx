@@ -44,10 +44,29 @@ const Studio = () => {
 
   // Cambiar rol a Streamer y cargar regalos al montar el componente
   useEffect(() => {
-    if (id_streamer) {
-      cambiarARolStreamer()
-      cargarRegalos()
+    const ensureStreamerAndLoad = async () => {
+      if (!id_streamer) return
+      try {
+        // Consultar al backend si el usuario existe y es STREAMER
+        const check = await fetch(`${BACKEND_URL}/usuarios/${id_streamer}`)
+        if (check.status === 200) {
+          const u = await check.json()
+          if (u.rol === 'STREAMER') {
+            await cargarRegalos()
+            return
+          }
+        }
+
+        // Si no es streamer o no existe, intentar cambiar rol (backend maneja creación/validación)
+        await cambiarARolStreamer()
+        await cargarRegalos()
+      } catch (err) {
+        console.error('Error validando streamer:', err)
+        toast.error('No fue posible verificar el streamer')
+      }
     }
+
+    ensureStreamerAndLoad()
   }, [id_streamer])
 
   // Conectar Socket.IO y escuchar regalos en tiempo real
