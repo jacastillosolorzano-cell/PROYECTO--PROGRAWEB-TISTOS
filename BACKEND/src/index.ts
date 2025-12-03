@@ -10,6 +10,13 @@ import { PrismaClient } from "./generated/prisma";
 import { PrismaClientKnownRequestError } from "./generated/prisma/runtime/library";
 import { v4 as uuidv4 } from "uuid";
 
+// Normaliza el id del streamer (puedes ajustar la lógica según tus necesidades)
+function normalizeStreamerId(id: any): string {
+    if (typeof id === "string") return id;
+    if (id && typeof id === "object" && id.id_streamer) return id.id_streamer;
+    return String(id);
+}
+
 
 dotenv.config();
 const app = express();
