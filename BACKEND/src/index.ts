@@ -705,3 +705,164 @@ app.post("/sesiones/:id_sesion/mensajes", async (req: Request, resp: Response) =
 server.listen(PORT, () => {
     console.log(`Servidor iniciado en puerto ${PORT}`);
 });
+
+// =================================================================
+//              Obtener progreso del espectador
+// =================================================================
+app.get("/usuarios/:id_usuario/progreso", async (req: Request, resp: Response) => {
+    try {
+        const { id_usuario } = req.params;
+
+
+        const progreso = await prisma.progresoEspectador.findFirst({
+            where: { id_espectador: id_usuario }
+        });
+
+
+        if (!progreso) {
+            return resp.status(200).json({
+                puntos_actuales: 0,
+                mensaje: "El usuario no tiene progreso aún"
+            });
+        }
+
+
+        resp.status(200).json({
+            puntos_actuales: progreso.puntos_actuales
+        });
+
+
+    } catch (error) {
+        console.error(error);
+        resp.status(500).json({ error: "Error al obtener progreso" });
+    }
+});
+
+
+// =================================================================
+//                    Listar Regalos
+// =================================================================
+
+
+app.get("/regalos", async (req: Request, resp: Response) => {
+    try {
+        const regalos = await prisma.regalo.findMany({
+            where: { activo: true },
+            select: {
+                id_regalo: true,
+                nombre: true,
+                costo_monedas: true,
+                puntos_otorgados: true,
+                id_streamer: true,
+            },
+        });
+
+
+        resp.status(200).json(regalos);
+    } catch (error) {
+        resp.status(500).json({ error: "Error al obtener regalos" });
+    }
+});
+// =================================================================
+//              Enviar regalo a streamer (compra + puntos)
+// =================================================================
+
+
+app.post("/regalos/enviar", async (req: Request, resp: Response) => {
+    try {
+        const { id_espectador, id_streamer, id_regalo, cantidad = 1 } = req.body;
+
+
+        if (!id_espectador || !id_streamer || !id_regalo) {
+            return resp.status(400).json({ error: "Datos incompletos" });
+        }
+
+
+        // Obtener regalo
+        const regalo = await prisma.regalo.findUnique({
+            where: { id_regalo }
+        });
+
+
+        if (!regalo) {
+            return resp.status(404).json({ error: "Regalo no encontrado" });
+        }
+
+
+        // Obtener perfil espectador
+        const perfil = await prisma.perfilEspectador.findUnique({
+            where: { id_usuario: id_espectador }
+        });
+
+
+        if (!perfil) {
+            return resp.status(404).json({ error: "Perfil de espectador no encontrado" });
+        }
+
+
+        const costoTotal = regalo.costo_monedas * cantidad;
+
+
+        if (perfil.saldo_monedas < costoTotal) {
+            return resp.status(400).json({
+                error: "Saldo insuficiente",
+                saldo_actual: perfil.saldo_monedas,
+                costo: costoTotal
+            });
+        }
+
+
+        // RESTAR MONEDAS
+        await prisma.perfilEspectador.update({
+            where: { id_usuario: id_espectador },
+            data: { saldo_monedas: { decrement: costoTotal } }
+        });
+
+
+        // SUMAR PUNTOS
+        await prisma.progresoEspectador.updateMany({
+            where: { id_espectador, id_streamer },
+            data: { puntos_actuales: { increment: regalo.puntos_otorgados * cantidad } }
+        });
+
+
+        // CREAR REGISTRO
+        const envio = await prisma.envioRegalo.create({
+            data: {
+                id_regalo,
+                id_espectador,
+                id_streamer,
+                cantidad,
+                monedas_usadas: costoTotal,
+                puntos_otorgados: regalo.puntos_otorgados * cantidad
+            }
+        });
+
+
+        const newSaldo = await prisma.perfilEspectador.findUnique({
+            where: { id_usuario: id_espectador }
+        });
+
+
+        resp.status(200).json({
+            message: "Regalo enviado correctamente",
+            envio,
+            saldo_monedas: newSaldo?.saldo_monedas
+        });
+
+
+    } catch (error) {
+        console.error("Error al enviar regalo:", error);
+        resp.status(500).json({ error: "Error al enviar regalo" });
+    }
+});
+
+
+
+
+// =================================================================
+//                    Cerrar sesion
+// =================================================================
+app.post("/logout", (req: Request, resp: Response) => {
+    resp.status(200).json({ message: "Sesión cerrada correctamente" });
+});
