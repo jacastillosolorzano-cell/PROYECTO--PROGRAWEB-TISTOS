@@ -24,6 +24,7 @@ const PORT = process.env.PORT;
 const BCRYPT_ROUNDS = parseInt(process.env.BCRYPT_ROUNDS || "10");
 const prisma = new PrismaClient();
 
+
 // Logger seguro: muestra mensaje y código en dev, evita stack en producción
 function logErrorSafe(context: string, error: any) {
     const msg = (error && error.message) ? error.message : String(error);
@@ -34,7 +35,12 @@ function logErrorSafe(context: string, error: any) {
     }
 }
 
-app.use(cors());
+app.use(cors({
+    origin: process.env.FRONTEND_URL,
+    methods: ["GET", "POST"],
+    credentials: true
+}));
+
 app.use(bodyParser.json());
 app.use(bodyParser.urlencoded({ extended: true }));
 
@@ -42,10 +48,16 @@ app.use(bodyParser.urlencoded({ extended: true }));
 //  SOCKET.IO CONFIG
 // =========================
 const server = http.createServer(app);
-const io = new IOServer(server, {
-    cors: { origin: process.env.FRONTEND_URL || "https://jacastillosolorzano-cell.github.io/PROYECTO--PROGRAWEB-TISTOS" }
 
+const io = new IOServer(server, {
+    cors: {
+        origin: process.env.FRONTEND_URL,
+        methods: ["GET", "POST"],
+        credentials: true
+    }
 });
+
+
 // Guarda los viewers y streamer por streamId
 // Guarda los viewers y streamer por streamId
 const streams: Record<string, { streamer: string | null; viewers: string[] }> = {};
@@ -196,7 +208,7 @@ app.post("/usuarios/crear", async (req: Request, resp: Response) => {
     }
 })
 
-app.post("/regalos/crear", async (req : Request, resp : Response) => {
+app.post("/regalos/crear", async (req: Request, resp: Response) => {
     try {
         const data = req.body
         const { nombre, costo_monedas, puntos_otorgados, id_streamer } = data
@@ -225,7 +237,7 @@ app.post("/regalos/crear", async (req : Request, resp : Response) => {
     }
 })
 
-app.get("/regalos/streamer/:id_streamer", async (req : Request, resp : Response) => {
+app.get("/regalos/streamer/:id_streamer", async (req: Request, resp: Response) => {
     try {
         const { id_streamer } = req.params
 
@@ -244,7 +256,7 @@ app.get("/regalos/streamer/:id_streamer", async (req : Request, resp : Response)
     }
 })
 
-app.put("/regalos/:id_regalo", async (req : Request, resp : Response) => {
+app.put("/regalos/:id_regalo", async (req: Request, resp: Response) => {
     try {
         const { id_regalo } = req.params
         const data = req.body
@@ -255,7 +267,7 @@ app.put("/regalos/:id_regalo", async (req : Request, resp : Response) => {
         }
 
         const actualizaciones: any = {}
-        
+
         if (data.nombre) actualizaciones.nombre = data.nombre
         if (data.costo_monedas !== undefined) actualizaciones.costo_monedas = Number(data.costo_monedas)
         if (data.puntos_otorgados !== undefined) actualizaciones.puntos_otorgados = Number(data.puntos_otorgados)
@@ -277,7 +289,7 @@ app.put("/regalos/:id_regalo", async (req : Request, resp : Response) => {
     }
 })
 
-app.delete("/regalos/:id_regalo", async (req : Request, resp : Response) => {
+app.delete("/regalos/:id_regalo", async (req: Request, resp: Response) => {
     try {
         const { id_regalo } = req.params
 
@@ -302,7 +314,7 @@ app.delete("/regalos/:id_regalo", async (req : Request, resp : Response) => {
 })
 
 // ============== RULETA ==============
-app.post("/ruleta/jugar", async (req : Request, resp : Response) => {
+app.post("/ruleta/jugar", async (req: Request, resp: Response) => {
     try {
         const { id_espectador, puntos_apostados, id_streamer } = req.body
         const id_streamer_str = normalizeStreamerId(id_streamer)
@@ -336,7 +348,7 @@ app.post("/ruleta/jugar", async (req : Request, resp : Response) => {
 
         // Obtener o crear el progreso del espectador (para los puntos)
         let progreso = await prisma.progresoEspectador.findFirst({
-            where: { 
+            where: {
                 id_espectador
             }
         })
@@ -345,7 +357,7 @@ app.post("/ruleta/jugar", async (req : Request, resp : Response) => {
         if (!progreso) {
             // Crear un progreso temporal sin nivel (esto requiere crear primero un nivel)
             // Por ahora, retornar error
-            resp.status(400).json({ 
+            resp.status(400).json({
                 error: "No tienes puntos asignados. Contacta a un administrador para asignarte puntos.",
                 puntos_disponibles: 0
             })
@@ -354,8 +366,8 @@ app.post("/ruleta/jugar", async (req : Request, resp : Response) => {
 
         // Verificar que tiene suficientes puntos
         if (progreso.puntos_actuales < puntos_apostados) {
-            resp.status(400).json({ 
-                error: "No tienes suficientes puntos", 
+            resp.status(400).json({
+                error: "No tienes suficientes puntos",
                 puntos_disponibles: progreso.puntos_actuales,
                 puntos_requeridos: puntos_apostados
             })
@@ -375,7 +387,7 @@ app.post("/ruleta/jugar", async (req : Request, resp : Response) => {
         // Elegir un sector aleatorio
         const indiceAleatorio = Math.floor(Math.random() * sectores.length)
         const sectorAleatorio = sectores[indiceAleatorio]
-        
+
         if (!sectorAleatorio) {
             resp.status(500).json({ error: "Error al seleccionar sector de ruleta" })
             return
@@ -414,7 +426,7 @@ app.post("/ruleta/jugar", async (req : Request, resp : Response) => {
         })
 
         const progresoActualizado = await prisma.progresoEspectador.findFirst({
-            where: { 
+            where: {
                 id_espectador
             }
         })
@@ -432,7 +444,7 @@ app.post("/ruleta/jugar", async (req : Request, resp : Response) => {
     }
 })
 
-app.get("/ruleta/historial/:id_espectador", async (req : Request, resp : Response) => {
+app.get("/ruleta/historial/:id_espectador", async (req: Request, resp: Response) => {
     try {
         const { id_espectador } = req.params
 
@@ -522,6 +534,17 @@ app.post("/streams/crear", async (req: Request, resp: Response) => {
 
         const streamId = uuidv4();
 
+        // Verificar que el streamer existe como usuario
+        const streamer = await prisma.usuario.findUnique({
+            where: { id_usuario: id_streamer }
+        });
+
+        if (!streamer) {
+            return resp.status(400).json({
+                error: "El id_streamer no existe en la base de datos"
+            });
+        }
+
         await prisma.sesionStreaming.create({
             data: {
                 id_sesion: streamId,
@@ -532,7 +555,11 @@ app.post("/streams/crear", async (req: Request, resp: Response) => {
         });
 
 
-        const link = `${process.env.FRONTEND_URL || "https://jacastillosolorzano-cell.github.io/PROYECTO--PROGRAWEB-TISTOS"}/#/viewer/${streamId}`;
+
+        const frontendBase = process.env.FRONTEND_URL!;
+
+
+        const link = `${frontendBase}/#/viewer/${streamId}`;
 
         resp.status(200).json({ streamId, link });
 

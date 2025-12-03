@@ -13,9 +13,10 @@ import BottomNav from "@/components/BottomNav";
 import { useNavigate } from "react-router-dom";
 import io from "socket.io-client";
 
-const socket = io("http://localhost:5002", {
+const socket = io(import.meta.env.VITE_BACKEND_URL, {
   transports: ["websocket"],
 });
+
 
 const Create = () => {
   const navigate = useNavigate();
@@ -61,7 +62,8 @@ const Create = () => {
     }
 
     // Crear sesión en el backend
-    const res = await fetch("http://localhost:5002/streams/crear", {
+    const res = await fetch(`${import.meta.env.VITE_BACKEND_URL}/streams/crear`, {
+
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -147,7 +149,8 @@ const Create = () => {
 
       // 3. Avisar al backend
       if (streamId) {
-        await fetch(`http://localhost:5002/streams/${streamId}/finalizar`, {
+        await fetch(`${import.meta.env.VITE_BACKEND_URL}/streams/${streamId}/finalizar`, {
+
           method: "POST"
         });
         console.log("✔ Sesión finalizada en backend");

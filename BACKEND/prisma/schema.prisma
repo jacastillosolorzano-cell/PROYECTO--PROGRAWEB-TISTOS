@@ -1,9 +1,3 @@
-// This is your Prisma schema file,
-// learn more about it in the docs: https://pris.ly/d/prisma-schema
-
-// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
-// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
-
 generator client {
   provider = "prisma-client-js"
   output   = "../src/generated/prisma"
@@ -14,9 +8,164 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-// =========================
-// ENUMS
-// =========================
+model Usuario {
+  id_usuario                    String               @id @default(uuid())
+  nombre                        String
+  email                         String               @unique
+  contrasena_hash               String
+  rol                           UsuarioRol
+  fecha_registro                DateTime             @default(now())
+  estado                        UsuarioEstado
+  enviosComoEspectador          EnvioRegalo[]        @relation("EnvioRegaloComoEspectador")
+  enviosComoStreamer            EnvioRegalo[]        @relation("EnvioRegaloComoStreamer")
+  jugadasComoEspectador         JugadaRuleta[]       @relation("JugadaRuletaComoEspectador")
+  jugadasComoStreamer           JugadaRuleta[]       @relation("JugadaRuletaComoStreamer")
+  mensajes                      MensajeChat[]
+  nivelesEspectadorConfigurados NivelEspectador[]
+  notificaciones                Notificacion[]
+  perfilEspectador              PerfilEspectador?
+  perfilStreamer                PerfilStreamer?
+  progresosComoEspectador       ProgresoEspectador[] @relation("ProgresoEspectadorComoEspectador")
+  progresosComoStreamer         ProgresoEspectador[] @relation("ProgresoEspectadorComoStreamer")
+  recargas                      RecargaMonedas[]
+  regalos                       Regalo[]
+  sesiones                      SesionStreaming[]
+}
+
+model PerfilEspectador {
+  id_usuario     String   @id
+  saldo_monedas  Int
+  fecha_creacion DateTime @default(now())
+  usuario        Usuario  @relation(fields: [id_usuario], references: [id_usuario])
+}
+
+model PerfilStreamer {
+  id_usuario               String         @id
+  horas_transmitidas_total Int
+  id_nivel_streamer        String?
+  fecha_creacion           DateTime       @default(now())
+  nivel                    NivelStreamer? @relation(fields: [id_nivel_streamer], references: [id_nivel_streamer])
+  usuario                  Usuario        @relation(fields: [id_usuario], references: [id_usuario])
+}
+
+model NivelStreamer {
+  id_nivel_streamer String           @id @default(uuid())
+  nombre_nivel      String
+  orden             Int
+  horas_requeridas  Int
+  perfiles          PerfilStreamer[]
+}
+
+model NivelEspectador {
+  id_nivel_espectador String               @id @default(uuid())
+  id_streamer         String
+  nombre_nivel        String
+  orden               Int
+  puntos_requeridos   Int
+  activo              Boolean              @default(true)
+  streamer            Usuario              @relation(fields: [id_streamer], references: [id_usuario])
+  progresos           ProgresoEspectador[]
+}
+
+model ProgresoEspectador {
+  id_progreso         String          @id @default(uuid())
+  id_espectador       String
+  id_streamer         String
+  puntos_actuales     Int
+  id_nivel_espectador String
+  fecha_hora          DateTime        @default(now())
+  espectador          Usuario         @relation("ProgresoEspectadorComoEspectador", fields: [id_espectador], references: [id_usuario])
+  nivel               NivelEspectador @relation(fields: [id_nivel_espectador], references: [id_nivel_espectador])
+  streamer            Usuario         @relation("ProgresoEspectadorComoStreamer", fields: [id_streamer], references: [id_usuario])
+
+  @@unique([id_espectador, id_streamer])
+}
+
+model SesionStreaming {
+  id_sesion        String        @id @default(uuid())
+  id_streamer      String
+  titulo           String
+  fecha_inicio     DateTime
+  fecha_fin        DateTime?
+  duracion_minutos Int?
+  envios           EnvioRegalo[]
+  mensajes         MensajeChat[]
+  streamer         Usuario       @relation(fields: [id_streamer], references: [id_usuario])
+}
+
+model MensajeChat {
+  id_mensaje       String          @id @default(uuid())
+  id_sesion        String
+  id_espectador    String
+  contenido        String
+  fecha_hora       DateTime        @default(now())
+  puntos_otorgados Int             @default(1)
+  espectador       Usuario         @relation(fields: [id_espectador], references: [id_usuario])
+  sesion           SesionStreaming @relation(fields: [id_sesion], references: [id_sesion])
+}
+
+model Regalo {
+  id_regalo        String        @id @default(uuid())
+  id_streamer      String
+  nombre           String
+  costo_monedas    Int
+  puntos_otorgados Int
+  activo           Boolean       @default(true)
+  envios           EnvioRegalo[]
+  streamer         Usuario       @relation(fields: [id_streamer], references: [id_usuario])
+}
+
+model EnvioRegalo {
+  id_envio         String           @id @default(uuid())
+  id_regalo        String
+  id_espectador    String
+  id_streamer      String
+  id_sesion        String?
+  cantidad         Int
+  monedas_usadas   Int
+  puntos_otorgados Int
+  fecha_hora       DateTime         @default(now())
+  espectador       Usuario          @relation("EnvioRegaloComoEspectador", fields: [id_espectador], references: [id_usuario])
+  regalo           Regalo           @relation(fields: [id_regalo], references: [id_regalo])
+  sesion           SesionStreaming? @relation(fields: [id_sesion], references: [id_sesion])
+  streamer         Usuario          @relation("EnvioRegaloComoStreamer", fields: [id_streamer], references: [id_usuario])
+}
+
+model JugadaRuleta {
+  id_jugada          String   @id @default(uuid())
+  id_espectador      String
+  id_streamer        String?
+  puntos_apostados   Int
+  resultado_segmento String
+  monedas_ganadas    Int
+  puntos_convertidos Int
+  fecha_hora         DateTime @default(now())
+  espectador         Usuario  @relation("JugadaRuletaComoEspectador", fields: [id_espectador], references: [id_usuario])
+  streamer           Usuario? @relation("JugadaRuletaComoStreamer", fields: [id_streamer], references: [id_usuario])
+}
+
+model RecargaMonedas {
+  id_recarga         String   @id @default(uuid())
+  id_espectador      String
+  monedas_compradas  Int
+  monto_pagado       Float
+  moneda             String
+  pasarela           String
+  codigo_comprobante String
+  estado             String
+  fecha_hora         DateTime @default(now())
+  espectador         Usuario  @relation(fields: [id_espectador], references: [id_usuario])
+}
+
+model Notificacion {
+  id_notificacion String           @id @default(uuid())
+  id_usuario      String
+  tipo            TipoNotificacion
+  mensaje         String
+  leido           Boolean          @default(false)
+  fecha_hora      DateTime         @default(now())
+  usuario         Usuario          @relation(fields: [id_usuario], references: [id_usuario])
+}
 
 enum UsuarioRol {
   ESPECTADOR
@@ -33,221 +182,3 @@ enum TipoNotificacion {
   NIVEL_STREAMER_SUBIDO
   REGALO_RECIBIDO
 }
-
-// =========================
-// USUARIOS
-// =========================
-
-model Usuario {
-  id_usuario      String        @id @default(uuid())
-  nombre          String
-  email           String        @unique
-  contrasena_hash String
-  rol             UsuarioRol
-  fecha_registro  DateTime      @default(now())
-  estado          UsuarioEstado
-
-  // perfiles 1 a 1
-  perfilEspectador PerfilEspectador?
-  perfilStreamer   PerfilStreamer?
-
-  // niveles y progreso
-  nivelesEspectadorConfigurados NivelEspectador[]
-  progresosComoEspectador       ProgresoEspectador[] @relation("ProgresoEspectadorComoEspectador")
-  progresosComoStreamer         ProgresoEspectador[] @relation("ProgresoEspectadorComoStreamer")
-
-  // streaming y chat
-  sesiones SesionStreaming[]
-  mensajes MensajeChat[]
-
-  // regalos
-  regalos              Regalo[]
-  enviosComoEspectador EnvioRegalo[] @relation("EnvioRegaloComoEspectador")
-  enviosComoStreamer   EnvioRegalo[] @relation("EnvioRegaloComoStreamer")
-
-  // ruleta
-  jugadasComoEspectador JugadaRuleta[] @relation("JugadaRuletaComoEspectador")
-  jugadasComoStreamer   JugadaRuleta[] @relation("JugadaRuletaComoStreamer")
-
-  // monedas y notificaciones
-  recargas       RecargaMonedas[]
-  notificaciones Notificacion[]
-}
-
-// Perfil específico del espectador (1 a 1 con Usuario)
-model PerfilEspectador {
-  id_usuario     String   @id
-  saldo_monedas  Int
-  fecha_creacion DateTime @default(now())
-
-  usuario Usuario @relation(fields: [id_usuario], references: [id_usuario])
-}
-
-// Perfil específico del streamer (1 a 1 con Usuario)
-// Tabla de Perfiles de Streamer
-model PerfilStreamer {
-  id_usuario               String   @id
-  horas_transmitidas_total Int
-  id_nivel_streamer        String? // Este campo es ahora opcional
-  fecha_creacion           DateTime @default(now())
-
-  usuario Usuario        @relation(fields: [id_usuario], references: [id_usuario])
-  nivel   NivelStreamer? @relation(fields: [id_nivel_streamer], references: [id_nivel_streamer]) // Relación opcional
-}
-
-// =========================
-// NIVELES Y PROGRESO
-// =========================
-
-// Niveles globales para streamers (por horas)
-model NivelStreamer {
-  id_nivel_streamer String @id @default(uuid())
-  nombre_nivel      String
-  orden             Int
-  horas_requeridas  Int // total horas/minutos requeridos
-
-  perfiles PerfilStreamer[]
-}
-
-// Niveles configurados por cada streamer para sus espectadores
-model NivelEspectador {
-  id_nivel_espectador String  @id @default(uuid())
-  id_streamer         String
-  nombre_nivel        String
-  orden               Int
-  puntos_requeridos   Int
-  activo              Boolean @default(true)
-
-  streamer  Usuario              @relation(fields: [id_streamer], references: [id_usuario])
-  progresos ProgresoEspectador[]
-}
-
-// Progreso de un espectador en el canal de un streamer
-model ProgresoEspectador {
-  id_progreso         String   @id @default(uuid())
-  id_espectador       String
-  id_streamer         String
-  puntos_actuales     Int
-  id_nivel_espectador String
-  fecha_hora          DateTime @default(now())
-
-  espectador Usuario         @relation("ProgresoEspectadorComoEspectador", fields: [id_espectador], references: [id_usuario])
-  streamer   Usuario         @relation("ProgresoEspectadorComoStreamer", fields: [id_streamer], references: [id_usuario])
-  nivel      NivelEspectador @relation(fields: [id_nivel_espectador], references: [id_nivel_espectador])
-
-  @@unique([id_espectador, id_streamer])
-}
-
-// =========================
-// STREAMING Y CHAT
-// =========================
-
-model SesionStreaming {
-  id_sesion        String    @id @default(uuid())
-  id_streamer      String
-  titulo           String
-  fecha_inicio     DateTime
-  fecha_fin        DateTime?
-  duracion_minutos Int?
-
-  streamer Usuario       @relation(fields: [id_streamer], references: [id_usuario])
-  mensajes MensajeChat[]
-  envios   EnvioRegalo[]
-}
-
-model MensajeChat {
-  id_mensaje       String   @id @default(uuid())
-  id_sesion        String
-  id_espectador    String
-  contenido        String
-  fecha_hora       DateTime @default(now())
-  puntos_otorgados Int      @default(1)
-
-  sesion     SesionStreaming @relation(fields: [id_sesion], references: [id_sesion])
-  espectador Usuario         @relation(fields: [id_espectador], references: [id_usuario])
-}
-
-// =========================
-// REGALOS
-// =========================
-
-model Regalo {
-  id_regalo        String  @id @default(uuid())
-  id_streamer      String
-  nombre           String
-  costo_monedas    Int
-  puntos_otorgados Int
-  activo           Boolean @default(true)
-
-  streamer Usuario       @relation(fields: [id_streamer], references: [id_usuario])
-  envios   EnvioRegalo[]
-}
-
-model EnvioRegalo {
-  id_envio         String   @id @default(uuid())
-  id_regalo        String
-  id_espectador    String
-  id_streamer      String
-  id_sesion        String?
-  cantidad         Int
-  monedas_usadas   Int
-  puntos_otorgados Int
-  fecha_hora       DateTime @default(now())
-
-  regalo     Regalo           @relation(fields: [id_regalo], references: [id_regalo])
-  espectador Usuario          @relation("EnvioRegaloComoEspectador", fields: [id_espectador], references: [id_usuario])
-  streamer   Usuario          @relation("EnvioRegaloComoStreamer", fields: [id_streamer], references: [id_usuario])
-  sesion     SesionStreaming? @relation(fields: [id_sesion], references: [id_sesion])
-}
-
-// =========================
-// RULETA (funcionalidad sorpresa)
-// =========================
-
-model JugadaRuleta {
-  id_jugada          String   @id @default(uuid())
-  id_espectador      String
-  id_streamer        String?
-  puntos_apostados   Int
-  resultado_segmento String
-  monedas_ganadas    Int
-  puntos_convertidos Int
-  fecha_hora         DateTime @default(now())
-
-  espectador Usuario  @relation("JugadaRuletaComoEspectador", fields: [id_espectador], references: [id_usuario])
-  streamer   Usuario? @relation("JugadaRuletaComoStreamer", fields: [id_streamer], references: [id_usuario])
-}
-
-// =========================
-// MONEDAS Y RECARGAS
-// =========================
-
-model RecargaMonedas {
-  id_recarga         String   @id @default(uuid())
-  id_espectador      String
-  monedas_compradas  Int
-  monto_pagado       Float
-  moneda             String
-  pasarela           String
-  codigo_comprobante String
-  estado             String
-  fecha_hora         DateTime @default(now())
-
-  espectador Usuario @relation(fields: [id_espectador], references: [id_usuario])
-}
-
-// =========================
-// NOTIFICACIONES
-// =========================
-
-model Notificacion {
-  id_notificacion String           @id @default(uuid())
-  id_usuario      String
-  tipo            TipoNotificacion
-  mensaje         String
-  leido           Boolean          @default(false)
-  fecha_hora      DateTime         @default(now())
-
-  usuario Usuario @relation(fields: [id_usuario], references: [id_usuario])
-}
-
