@@ -32,7 +32,7 @@ createRoot(document.getElementById("root")!).render(
         <SaldoProvider>  
           <Toaster />
           <Sonner />
-          <HashRouter basename={import.meta.env.BASE_URL}>
+          <HashRouter>
             <Suspense fallback={<div className="p-4">Cargando...</div>}>
               <Routes>
                 <Route path="/" element={<Login />} />
