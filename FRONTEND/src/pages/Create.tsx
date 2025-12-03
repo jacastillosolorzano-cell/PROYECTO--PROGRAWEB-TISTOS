@@ -2,12 +2,7 @@ import { useState, useEffect, useRef } from "react";
 import { Button } from "@/components/ui/button";
 import {
   Music2,
-  X,
-  RotateCcw,
-  Timer,
-  Layout,
-  Mic,
-  ChevronDown
+  X
 } from "lucide-react";
 import BottomNav from "@/components/BottomNav";
 import { useNavigate } from "react-router-dom";
@@ -17,12 +12,10 @@ const socket = io(import.meta.env.VITE_BACKEND_URL, {
   transports: ["websocket"],
 });
 
-
 const Create = () => {
   const navigate = useNavigate();
-  const [mode, setMode] = useState("foto");
-  const [streamId, setStreamId] = useState("");
   const [isStreaming, setIsStreaming] = useState(false);
+  const [streamId, setStreamId] = useState("");
   const localVideoRef = useRef<HTMLVideoElement>(null);
 
   const peersRef = useRef<{ [key: string]: RTCPeerConnection }>({});
@@ -32,7 +25,6 @@ const Create = () => {
   useEffect(() => {
     socket.on("connect", () => console.log("Socket streamer:", socket.id));
 
-    // Viewer envía ANSWER → streamer la recibe aquí
     socket.on("stream-answer", async (data) => {
       const pc = peersRef.current[data.from];
       if (pc) {
@@ -41,7 +33,6 @@ const Create = () => {
       }
     });
 
-    // Viewer envía ICE → streamer lo recibe aquí
     socket.on("ice-candidate", async (data) => {
       const pc = peersRef.current[data.from];
       if (pc && data.candidate) {
@@ -61,9 +52,8 @@ const Create = () => {
       return;
     }
 
-    // Crear sesión en el backend
+    // Crear sesión en backend
     const res = await fetch(`${import.meta.env.VITE_BACKEND_URL}/streams/crear`, {
-
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -75,12 +65,17 @@ const Create = () => {
     const data = await res.json();
     console.log("STREAM BACKEND:", data);
 
-    const id = data.streamId;
-    setStreamId(id);
+    // ===================================================
+    // GUARDAR EN LOCALSTORAGE PARA LOS REGALOS
+    // ===================================================
+    localStorage.setItem("id_streamer_actual", usuario.id_usuario);
+    localStorage.setItem("sesion_actual", data.streamId); // ID de sesión
+    console.log("⚡ STREAMER GUARDADO EN LOCALSTORAGE");
+
+    setStreamId(data.streamId);
     setIsStreaming(true);
 
-    // Unirse al room como STREAMER
-    socket.emit("join_stream", { streamId: id, role: "streamer" });
+    socket.emit("join_stream", { streamId: data.streamId, role: "streamer" });
 
     // Obtener cámara/micro
     const stream = await navigator.mediaDevices.getUserMedia({
@@ -94,79 +89,62 @@ const Create = () => {
       localVideoRef.current.srcObject = stream;
     }
 
-    // Esperar viewers
     socket.on("viewer-joined", async (viewerId: string) => {
       console.log("👤 Nuevo viewer:", viewerId);
 
-      if (!streamRef.current) {
-        console.error("NO STREAM DISPONIBLE!");
-        return;
-      }
-
       const pc = createPeerConnection(viewerId);
 
-      // Agregar pistas del streamer
-      streamRef.current.getTracks().forEach((track) => {
-        pc.addTrack(track, streamRef.current!);
+      stream.getTracks().forEach((track) => {
+        pc.addTrack(track, stream);
       });
 
-      // Crear OFFER y enviarla al viewer
       const offer = await pc.createOffer();
       await pc.setLocalDescription(offer);
-
-      console.log("📤 Enviando OFFER a viewer:", viewerId);
 
       socket.emit("stream-offer", {
         offer,
         to: viewerId,
         from: socket.id,
-        streamId: id,
+        streamId: data.streamId,
       });
     });
 
     alert(`🔗 Comparte el enlace: ${data.link}`);
   };
 
-
   // =============================================================
-  //              Detener Stream
+  //                    DETENER STREAM
   // =============================================================
   const stopStream = async () => {
     try {
       console.log("⛔ Deteniendo stream...");
 
-      // 1. Apagar camara/microfono
       if (streamRef.current) {
-        streamRef.current.getTracks().forEach(track => track.stop());
+        streamRef.current.getTracks().forEach((t) => t.stop());
         streamRef.current = null;
       }
 
-      // 2. Cerrar PeerConnections
-      Object.values(peersRef.current).forEach(pc => {
-        pc.close();
-      });
+      Object.values(peersRef.current).forEach((pc) => pc.close());
       peersRef.current = {};
 
-      // 3. Avisar al backend
       if (streamId) {
-        await fetch(`${import.meta.env.VITE_BACKEND_URL}/streams/${streamId}/finalizar`, {
-
-          method: "POST"
-        });
-        console.log("✔ Sesión finalizada en backend");
+        await fetch(
+          `${import.meta.env.VITE_BACKEND_URL}/streams/${streamId}/finalizar`,
+          { method: "POST" }
+        );
       }
 
-      // 4. UI
       setIsStreaming(false);
       setStreamId("");
 
-      alert("Stream finalizado");
+      // LIMPIAR DATOS DE STREAMING
+      localStorage.removeItem("sesion_actual");
 
+      alert("Stream finalizado");
     } catch (err) {
-      console.error("Error al detener stream:", err);
+      console.error(err);
     }
   };
-
 
   // =============================================================
   //              CREAR PEER CONNECTION (STREAMER)
@@ -191,11 +169,9 @@ const Create = () => {
     return pc;
   };
 
-  // =============================================================
-  //                            UI
-  // =============================================================
   return (
     <div className="min-h-screen bg-background flex flex-col pb-20">
+      
       {/* Header */}
       <div className="flex items-center gap-2 p-4">
         <Button variant="ghost" size="icon" onClick={() => navigate(-1)}>
@@ -208,7 +184,7 @@ const Create = () => {
         </div>
       </div>
 
-      {/* Video + controles */}
+      {/* Video */}
       <div className="flex flex-col items-center justify-center flex-1 mt-40">
         <video
           ref={localVideoRef}
@@ -237,7 +213,6 @@ const Create = () => {
               Detener
             </Button>
           )}
-
         </div>
       </div>
 

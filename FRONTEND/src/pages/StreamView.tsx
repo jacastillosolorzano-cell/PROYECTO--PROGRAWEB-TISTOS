@@ -1,20 +1,50 @@
 import React, { useEffect, useRef, useState } from "react";
 import { useParams } from "react-router-dom";
 import io from "socket.io-client";
+import axios from "axios";
 
+const BACKEND = import.meta.env.VITE_BACKEND_URL;
+
+// Conexión de WebSockets
 const socket = io("http://localhost:5002", { transports: ["websocket"] });
-
-
-
 
 const StreamView = () => {
     const { id_sesion } = useParams();
     const videoRef = useRef<HTMLVideoElement>(null);
     const pcRef = useRef<RTCPeerConnection | null>(null);
 
-    // 👇 NUEVO: estado del audio
     const [audioEnabled, setAudioEnabled] = useState(false);
 
+    // =====================================================
+    //   🔥 CARGAR STREAMER Y GUARDARLO EN LOCALSTORAGE
+    // =====================================================
+    useEffect(() => {
+        async function cargarStreamer() {
+            if (!id_sesion) return;
+
+            try {
+                const res = await axios.get<{ id_streamer: string }>(`${BACKEND}/sesiones/${id_sesion}`);
+                const id_streamer = res.data.id_streamer;
+
+                if (id_streamer) {
+                    localStorage.setItem("id_streamer_actual", id_streamer);
+                    console.log("✔ Streamer actual guardado:", id_streamer);
+                } else {
+                    console.warn("⚠ La sesión no tiene streamer asociado");
+                }
+
+            } catch (err) {
+                console.error("❌ Error cargando streamer:", err);
+            }
+        }
+
+        cargarStreamer();
+    }, [id_sesion]);
+
+
+    // =====================================================
+    //   🚀 CONFIGURACIÓN DEL VIEWER (WebRTC + Socket.IO)
+    // =====================================================
     useEffect(() => {
         if (!id_sesion) return;
 
@@ -38,13 +68,10 @@ const StreamView = () => {
             }
         };
 
-        // Evento cuando el streamer corta el stream
         socket.on("stream-ended", () => {
             console.log("🔴 Stream terminado");
 
-            if (videoRef.current) {
-                videoRef.current.srcObject = null;
-            }
+            if (videoRef.current) videoRef.current.srcObject = null;
 
             if (pcRef.current) {
                 pcRef.current.close();
@@ -85,9 +112,11 @@ const StreamView = () => {
         };
     }, [id_sesion]);
 
-    // ============================
-    //     TOGGLE DE AUDIO
-    // ============================
+
+
+    // =====================================================
+    //   🔊 Toggle de audio
+    // =====================================================
     const toggleAudio = () => {
         if (!videoRef.current) return;
 
@@ -95,16 +124,15 @@ const StreamView = () => {
         setAudioEnabled(newState);
 
         if (newState) {
-            // Activar audio
             videoRef.current.muted = false;
             videoRef.current.volume = 1.0;
-            videoRef.current.play().catch((err) => console.log(err));
+            videoRef.current.play().catch(err => console.log(err));
         } else {
-            // Silenciar
             videoRef.current.muted = true;
             videoRef.current.volume = 0;
         }
     };
+
 
     return (
         <div className="h-screen w-screen bg-black flex items-center justify-center relative">
@@ -113,7 +141,7 @@ const StreamView = () => {
                 ref={videoRef}
                 autoPlay
                 playsInline
-                muted={!audioEnabled}   // sincronizado con toggle
+                muted={!audioEnabled}
                 style={{
                     width: "100%",
                     height: "100%",
@@ -121,7 +149,6 @@ const StreamView = () => {
                 }}
             />
 
-            {/* BOTÓN TOGGLE AUDIO */}
             <button
                 onClick={toggleAudio}
                 className="absolute bottom-10 right-10 bg-white text-black px-4 py-2 rounded-xl shadow-lg"
