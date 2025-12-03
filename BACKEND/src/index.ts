@@ -55,8 +55,9 @@ app.use(cors({
     credentials: true
 }));
 
-// Responder preflight OPTIONS para todas las rutas
-app.options('*', cors());
+// Nota: no usar app.options con patrones '*' o '/*' porque algunas versiones
+// de path-to-regexp usadas por express/router fallan al parsearlos. El middleware
+// cors() aplicado globalmente ya maneja las preflight OPTIONS correctamente.
 
 app.use(bodyParser.json());
 app.use(bodyParser.urlencoded({ extended: true }));
