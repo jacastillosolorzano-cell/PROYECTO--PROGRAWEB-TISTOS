@@ -177,12 +177,265 @@ app.post("/usuarios/crear", async (req: Request, resp: Response) => {
             resp.status(500).json({ error: "Error al crear usuario" });
         }
     }
-});
+})
 
+app.post("/regalos/crear", async (req : Request, resp : Response) => {
+    try {
+        const data = req.body
+        const { nombre, costo_monedas, puntos_otorgados, id_streamer } = data
 
-// =================================================================
-//                           LOGIN
-// =================================================================
+        const id_streamer_str = normalizeStreamerId(id_streamer)
+
+        if (!nombre || !costo_monedas || !puntos_otorgados || !id_streamer_str) {
+            resp.status(400).json({ error: "Nombre, costo, puntos e id_streamer son requeridos" })
+            return
+        }
+
+        const regalo = await prisma.regalo.create({
+            data: {
+                nombre,
+                costo_monedas: Number(costo_monedas),
+                puntos_otorgados: Number(puntos_otorgados),
+                id_streamer: id_streamer_str,
+                activo: true
+            }
+        })
+
+        resp.status(200).json(regalo)
+    } catch (error) {
+        const prismaError = error as PrismaClientKnownRequestError
+        resp.status(500).json({ error: "Error al crear el regalo" })
+    }
+})
+
+app.get("/regalos/streamer/:id_streamer", async (req : Request, resp : Response) => {
+    try {
+        const { id_streamer } = req.params
+
+        if (!id_streamer) {
+            resp.status(400).json({ error: "id_streamer es requerido" })
+            return
+        }
+
+        const regalos = await prisma.regalo.findMany({
+            where: { id_streamer }
+        })
+
+        resp.status(200).json(regalos)
+    } catch (error) {
+        resp.status(500).json({ error: "Error al obtener regalos" })
+    }
+})
+
+app.put("/regalos/:id_regalo", async (req : Request, resp : Response) => {
+    try {
+        const { id_regalo } = req.params
+        const data = req.body
+
+        if (!id_regalo) {
+            resp.status(400).json({ error: "id_regalo es requerido" })
+            return
+        }
+
+        const actualizaciones: any = {}
+        
+        if (data.nombre) actualizaciones.nombre = data.nombre
+        if (data.costo_monedas !== undefined) actualizaciones.costo_monedas = Number(data.costo_monedas)
+        if (data.puntos_otorgados !== undefined) actualizaciones.puntos_otorgados = Number(data.puntos_otorgados)
+        if (data.activo !== undefined) actualizaciones.activo = data.activo
+
+        const regalo = await prisma.regalo.update({
+            where: { id_regalo },
+            data: actualizaciones
+        })
+
+        resp.status(200).json(regalo)
+    } catch (error) {
+        const prismaError = error as PrismaClientKnownRequestError
+        if (prismaError.code === "P2025") {
+            resp.status(404).json({ error: "Regalo no encontrado" })
+        } else {
+            resp.status(500).json({ error: "Error al actualizar el regalo" })
+        }
+    }
+})
+
+app.delete("/regalos/:id_regalo", async (req : Request, resp : Response) => {
+    try {
+        const { id_regalo } = req.params
+
+        if (!id_regalo) {
+            resp.status(400).json({ error: "id_regalo es requerido" })
+            return
+        }
+
+        await prisma.regalo.delete({
+            where: { id_regalo }
+        })
+
+        resp.status(200).json({ message: "Regalo eliminado exitosamente" })
+    } catch (error) {
+        const prismaError = error as PrismaClientKnownRequestError
+        if (prismaError.code === "P2025") {
+            resp.status(404).json({ error: "Regalo no encontrado" })
+        } else {
+            resp.status(500).json({ error: "Error al eliminar el regalo" })
+        }
+    }
+})
+
+// ============== RULETA ==============
+app.post("/ruleta/jugar", async (req : Request, resp : Response) => {
+    try {
+        const { id_espectador, puntos_apostados, id_streamer } = req.body
+        const id_streamer_str = normalizeStreamerId(id_streamer)
+
+        if (!id_espectador || !puntos_apostados) {
+            resp.status(400).json({ error: "id_espectador y puntos_apostados son requeridos" })
+            return
+        }
+
+        // Verificar que el usuario existe
+        const usuario = await prisma.usuario.findUnique({
+            where: { id_usuario: id_espectador },
+            include: { perfilEspectador: true }
+        })
+
+        if (!usuario) {
+            resp.status(404).json({ error: "Usuario no encontrado" })
+            return
+        }
+
+        // Si no tiene perfil de espectador, crear uno
+        let perfilEspectador = usuario.perfilEspectador
+        if (!perfilEspectador) {
+            perfilEspectador = await prisma.perfilEspectador.create({
+                data: {
+                    id_usuario: id_espectador,
+                    saldo_monedas: 0
+                }
+            })
+        }
+
+        // Obtener o crear el progreso del espectador (para los puntos)
+        let progreso = await prisma.progresoEspectador.findFirst({
+            where: { 
+                id_espectador
+            }
+        })
+
+        // Si no tiene progreso, no podemos jugar sin tener un nivel asignado
+        if (!progreso) {
+            // Crear un progreso temporal sin nivel (esto requiere crear primero un nivel)
+            // Por ahora, retornar error
+            resp.status(400).json({ 
+                error: "No tienes puntos asignados. Contacta a un administrador para asignarte puntos.",
+                puntos_disponibles: 0
+            })
+            return
+        }
+
+        // Verificar que tiene suficientes puntos
+        if (progreso.puntos_actuales < puntos_apostados) {
+            resp.status(400).json({ 
+                error: "No tienes suficientes puntos", 
+                puntos_disponibles: progreso.puntos_actuales,
+                puntos_requeridos: puntos_apostados
+            })
+            return
+        }
+
+        // Definir los sectores de la ruleta
+        const sectores = [
+            { label: "+5", monedas: 5 },
+            { label: "+10", monedas: 10 },
+            { label: "+20", monedas: 20 },
+            { label: "+50", monedas: 50 },
+            { label: "+100", monedas: 100 },
+            { label: "x2", monedas: 50 } // especial: x2 = 50 monedas
+        ]
+
+        // Elegir un sector aleatorio
+        const indiceAleatorio = Math.floor(Math.random() * sectores.length)
+        const sectorAleatorio = sectores[indiceAleatorio]
+        
+        if (!sectorAleatorio) {
+            resp.status(500).json({ error: "Error al seleccionar sector de ruleta" })
+            return
+        }
+
+        const monedas_ganadas = sectorAleatorio.monedas
+
+        // Registrar la jugada en la base de datos
+        const jugada = await prisma.jugadaRuleta.create({
+            data: {
+                id_espectador,
+                id_streamer: id_streamer_str,
+                puntos_apostados,
+                resultado_segmento: sectorAleatorio.label,
+                monedas_ganadas,
+                puntos_convertidos: 0
+            }
+        })
+
+        // Actualizar el saldo de monedas del usuario (SUMAR)
+        await prisma.perfilEspectador.update({
+            where: { id_usuario: id_espectador },
+            data: { saldo_monedas: { increment: monedas_ganadas } }
+        })
+
+        // Actualizar los puntos del usuario (RESTAR)
+        // Usar el id_progreso directamente
+        await prisma.progresoEspectador.update({
+            where: { id_progreso: progreso.id_progreso },
+            data: { puntos_actuales: { decrement: puntos_apostados } }
+        })
+
+        // Obtener los datos actualizados
+        const perfilActualizado = await prisma.perfilEspectador.findUnique({
+            where: { id_usuario: id_espectador }
+        })
+
+        const progresoActualizado = await prisma.progresoEspectador.findFirst({
+            where: { 
+                id_espectador
+            }
+        })
+
+        resp.status(200).json({
+            jugada_id: jugada.id_jugada,
+            resultado_segmento: jugada.resultado_segmento,
+            monedas_ganadas: jugada.monedas_ganadas,
+            saldo_monedas_nuevo: perfilActualizado?.saldo_monedas || 0,
+            puntos_actuales: progresoActualizado?.puntos_actuales || 0
+        })
+    } catch (error) {
+        console.error("Error en ruleta:", error)
+        resp.status(500).json({ error: "Error al procesar la jugada de ruleta" })
+    }
+})
+
+app.get("/ruleta/historial/:id_espectador", async (req : Request, resp : Response) => {
+    try {
+        const { id_espectador } = req.params
+
+        if (!id_espectador) {
+            resp.status(400).json({ error: "id_espectador es requerido" })
+            return
+        }
+
+        const historial = await prisma.jugadaRuleta.findMany({
+            where: { id_espectador },
+            orderBy: { fecha_hora: "desc" },
+            take: 10
+        })
+
+        resp.status(200).json(historial)
+    } catch (error) {
+        resp.status(500).json({ error: "Error al obtener historial" })
+    }
+})
+
 app.post("/login", async (req: Request, resp: Response) => {
     try {
         const { correo, contrasena } = req.body;
@@ -240,12 +493,7 @@ app.post("/usuarios/:id_usuario/inicializar-perfil", async (req: Request, resp: 
     } catch (error) {
         resp.status(500).json({ error: "Error al inicializar perfil" });
     }
-});
-
-// =================================================================
-//                        STREAMING
-// =================================================================
-
+})
 
 app.post("/streams/crear", async (req: Request, resp: Response) => {
     try {
