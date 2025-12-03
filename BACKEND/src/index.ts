@@ -250,7 +250,7 @@ app.post("/ruleta/jugar", async (req : Request, resp : Response) => {
             }
 
             // Buscar un nivel activo del streamer para inicializar puntos
-            const nivelInicial = await prisma.nivelEspectador.findFirst({
+            let nivelInicial = await prisma.nivelEspectador.findFirst({
                 where: { id_streamer: id_streamer_str, activo: true },
                 orderBy: { orden: 'asc' }
             })
@@ -468,6 +468,61 @@ app.post("/usuarios/:id_usuario/inicializar-perfil", async (req : Request, resp 
     } catch (error) {
         console.error("Error al crear perfil:", error)
         resp.status(500).json({ error: "Error al crear el perfil de espectador" })
+    }
+})
+
+// Endpoint para inicializar progreso de un espectador en el canal de un streamer
+app.post("/usuarios/:id_usuario/inicializar-progreso/:id_streamer", async (req: Request, resp: Response) => {
+    try {
+        const { id_usuario, id_streamer } = req.params
+
+        if (!id_usuario || !id_streamer) {
+            resp.status(400).json({ error: "id_usuario e id_streamer son requeridos" })
+            return
+        }
+
+        // Verificar que el usuario existe
+        const usuario = await prisma.usuario.findUnique({ where: { id_usuario } })
+        if (!usuario) {
+            resp.status(404).json({ error: "Usuario no encontrado" })
+            return
+        }
+
+        // Verificar si ya tiene progreso para este streamer
+        let progreso = await prisma.progresoEspectador.findFirst({ where: { id_espectador: id_usuario, id_streamer } })
+        if (progreso) {
+            return resp.status(200).json({ message: "Progreso existente", progreso })
+        }
+
+        // Buscar o crear un nivel de espectador para el streamer
+        let nivel = await prisma.nivelEspectador.findFirst({ where: { id_streamer, activo: true }, orderBy: { orden: 'asc' } })
+        if (!nivel) {
+            nivel = await prisma.nivelEspectador.create({
+                data: {
+                    id_streamer,
+                    nombre_nivel: 'Inicial',
+                    orden: 1,
+                    puntos_requeridos: 0,
+                    activo: true
+                }
+            })
+        }
+
+        // Crear progreso inicial con puntos por defecto (configurable vía env)
+        const defaultPoints = Number(process.env.DEFAULT_INITIAL_POINTS || "1000")
+        progreso = await prisma.progresoEspectador.create({
+            data: {
+                id_espectador: id_usuario,
+                id_streamer,
+                puntos_actuales: defaultPoints,
+                id_nivel_espectador: nivel.id_nivel_espectador
+            }
+        })
+
+        resp.status(200).json({ message: "Progreso inicializado", progreso })
+    } catch (error) {
+        console.error("Error al inicializar progreso:", error)
+        resp.status(500).json({ error: "Error al inicializar progreso" })
     }
 })
 
