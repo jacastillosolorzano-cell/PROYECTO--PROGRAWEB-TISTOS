@@ -256,11 +256,19 @@ app.post("/ruleta/jugar", async (req : Request, resp : Response) => {
             })
 
             if (!nivelInicial) {
-                resp.status(400).json({ 
-                    error: "No hay niveles de espectador configurados para este streamer. Contacta al streamer o administrador.",
-                    puntos_disponibles: 0
+                // No hay niveles configurados: crear un nivel por defecto automáticamente
+                const nivelPorDefecto = await prisma.nivelEspectador.create({
+                    data: {
+                        id_streamer: id_streamer_str,
+                        nombre_nivel: 'Inicial',
+                        orden: 1,
+                        puntos_requeridos: 0,
+                        activo: true
+                    }
                 })
-                return
+
+                // Usar el nivel creado como nivelInicial
+                nivelInicial = nivelPorDefecto
             }
 
             // Crear progreso inicial con puntos por defecto (por ejemplo 1000)
