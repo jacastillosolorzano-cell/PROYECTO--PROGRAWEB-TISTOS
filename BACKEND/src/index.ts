@@ -33,7 +33,7 @@ app.use(bodyParser.urlencoded({ extended: true }));
 // =========================
 const server = http.createServer(app);
 const io = new IOServer(server, {
-    cors: { origin: process.env.FRONTEND_URL || "http://localhost:8080" }
+    cors: { origin: process.env.FRONTEND_URL || "https://jacastillosolorzano-cell.github.io/PROYECTO--PROGRAWEB-TISTOS" }
 
 });
 // Guarda los viewers y streamer por streamId
@@ -522,7 +522,7 @@ app.post("/streams/crear", async (req: Request, resp: Response) => {
         });
 
 
-        const link = `${process.env.FRONTEND_URL || "http://localhost:8080"}/#/viewer/${streamId}`;
+        const link = `${process.env.FRONTEND_URL || "https://jacastillosolorzano-cell.github.io/PROYECTO--PROGRAWEB-TISTOS"}/#/viewer/${streamId}`;
 
         resp.status(200).json({ streamId, link });
 
