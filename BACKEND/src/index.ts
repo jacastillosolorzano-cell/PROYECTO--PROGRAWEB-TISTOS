@@ -204,6 +204,40 @@ app.post("/usuarios/crear", async (req: Request, resp: Response) => {
     }
 })
 
+// Obtener usuario por id (sin exponer contrasena_hash)
+app.get('/usuarios/:id_usuario', async (req: Request, resp: Response) => {
+    try {
+        const { id_usuario } = req.params;
+        if (!id_usuario) return resp.status(400).json({ error: 'id_usuario es requerido' });
+
+        const usuario = await prisma.usuario.findUnique({ where: { id_usuario } });
+        if (!usuario) return resp.status(404).json({ error: 'Usuario no encontrado' });
+
+        const { contrasena_hash: _, ...usuarioSeguro } = usuario as any;
+        resp.status(200).json(usuarioSeguro);
+    } catch (error) {
+        resp.status(500).json({ error: 'Error al obtener usuario' });
+    }
+});
+
+// Cambiar rol de un usuario (ej: a STREAMER)
+app.put('/usuarios/:id_usuario/rol', async (req: Request, resp: Response) => {
+    try {
+        const { id_usuario } = req.params;
+        const { rol } = req.body;
+        if (!id_usuario || !rol) return resp.status(400).json({ error: 'id_usuario y rol son requeridos' });
+
+        const usuario = await prisma.usuario.findUnique({ where: { id_usuario } });
+        if (!usuario) return resp.status(404).json({ error: 'Usuario no encontrado' });
+
+        const actualizado = await prisma.usuario.update({ where: { id_usuario }, data: { rol } });
+        const { contrasena_hash: _, ...usuarioSeguro } = actualizado as any;
+        resp.status(200).json(usuarioSeguro);
+    } catch (error) {
+        resp.status(500).json({ error: 'Error al actualizar rol' });
+    }
+});
+
 app.post("/regalos/crear", async (req: Request, resp: Response) => {
     try {
         const data = req.body
@@ -267,10 +301,19 @@ app.get("/regalos/streamer/:id_streamer", async (req: Request, resp: Response) =
             return
         }
 
-        const regalos = await prisma.regalo.findMany({
-            where: { id_streamer }
-        })
+        // Verificar que el streamer exista y sea STREAMER
+        const streamer = await prisma.usuario.findUnique({ where: { id_usuario: id_streamer } })
+        if (!streamer) {
+            resp.status(404).json({ error: "Streamer no encontrado" })
+            return
+        }
 
+        if (streamer.rol !== 'STREAMER') {
+            resp.status(403).json({ error: 'El usuario no es streamer' })
+            return
+        }
+
+        const regalos = await prisma.regalo.findMany({ where: { id_streamer } })
         resp.status(200).json(regalos)
     } catch (error) {
         resp.status(500).json({ error: "Error al obtener regalos" })
