@@ -1,4 +1,3 @@
-// ...existing code...
 import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
@@ -16,48 +15,54 @@ const Login = () => {
   const navigate = useNavigate();
 
   const handleLogin = async (e: React.FormEvent) => {
-    e.preventDefault();
-    try {
-      const resp = await fetch(`${BACKEND_URL}/login`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json"
-        },
-        body: JSON.stringify({
-          correo: email,
-          contrasena: password   // <-- AQUÍ ES EL CAMBIO
-        })
-      });
+  e.preventDefault();
 
+  try {
+    const resp = await fetch(`${BACKEND_URL}/login`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        correo: email,
+        contrasena: password
+      })
+    });
 
-      if (resp.status === 200) {
-        const usuario = await resp.json();
-        // persistir usuario activo
-        localStorage.setItem("tistos_current_user", JSON.stringify(usuario));
+    const usuario = await resp.json();
 
-        // Inicializar perfil de espectador
-        try {
-          await fetch(`${BACKEND_URL}/usuarios/${usuario.id_usuario}/inicializar-perfil`, {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json"
-            }
-          });
-        } catch (perfil_error) {
-          console.error("Error al inicializar perfil:", perfil_error);
-        }
+    if (resp.status === 200) {
 
-        setError("");
-        navigate("/index");
-      } else {
-        const errorData = await resp.json();
-        setError(errorData.error || "correo y/o contraseña incorrectos");
+      // Guardar usuario en localStorage
+      localStorage.setItem("usuario", JSON.stringify(usuario)); // <-- CORREGIDO
+
+      // Inicializar perfil de espectador
+      try {
+        await fetch(`${BACKEND_URL}/usuarios/${usuario.id_usuario}/inicializar-perfil`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" }
+        });
+      } catch (perfil_error) {
+        console.error("Error al inicializar perfil:", perfil_error);
       }
-    } catch (error) {
-      setError("Error al conectar con el servidor");
-      console.error(error);
+
+      // (Opcional) Si el usuario NO ES STREAMER, redirigir a otra pantalla
+      if (usuario.rol !== "STREAMER") {
+        console.warn("El usuario no es streamer. Solo podrá ver transmisiones.");
+      }
+
+      setError("");
+      navigate("/index");
+
+    } else {
+      const errorData = await resp.json();
+      setError(errorData.error || "correo y/o contraseña incorrectos");
     }
-  };
+
+  } catch (error) {
+    setError("Error al conectar con el servidor");
+    console.error(error);
+  }
+};
+
 
 
   return (
