@@ -1,0 +1,13 @@
+### Cambiar rol de usuario a STREAMER
+PUT http://localhost:5002/usuarios/07bef395-0d6e-4445-bf55-f5ece6b803f8/rol
+Content-Type: application/json
+
+{
+  "rol": "STREAMER"
+}
+
+### Otros usuarios disponibles:
+# 10907310-7f78-4471-a444-1dde279d30d0 (Usuario Test)
+# 53442c36-2860-4fb5-b349-7bf8350c4a3b (franco)
+# 8722b810-bc71-428d-aac2-e60e0b7aca96 (ulima)
+# b2ab5f49-5e64-4183-9afb-c45cb817cebb (Juler)

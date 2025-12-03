@@ -1,0 +1,8 @@
+POST http://localhost:5002/usuarios/actualizar
+Content-Type: application/json
+
+{
+    "id" : "9498efe9-7c20-44b0-a7b6-20e6950ba73f",
+    "nombre" : "Luis G 2",
+    "estado" : "Usado"
+}

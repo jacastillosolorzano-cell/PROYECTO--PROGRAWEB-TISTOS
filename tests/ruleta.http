@@ -1,0 +1,31 @@
+### Jugar ruleta (descuenta 100 puntos y suma monedas)
+POST http://localhost:5002/ruleta/jugar
+Content-Type: application/json
+
+{
+  "id_espectador": "07bef395-0d6e-4445-bf55-f5ece6b803f8",
+  "puntos_apostados": 100,
+  "id_streamer": null
+}
+
+### Obtener historial de jugadas
+GET http://localhost:5002/ruleta/historial/07bef395-0d6e-4445-bf55-f5ece6b803f8
+
+### NOTA IMPORTANTE:
+# Este endpoint RESTA puntos del usuario en la tabla ProgresoEspectador
+# y SUMA monedas en la tabla PerfilEspectador
+# 
+# La tabla JugadaRuleta se llena con:
+# - id_espectador: ID del jugador
+# - id_streamer: ID del streamer (opcional)
+# - puntos_apostados: Puntos que gastó (100)
+# - resultado_segmento: Sector ganador (+5, +10, +20, +50, +100, x2)
+# - monedas_ganadas: Monedas obtenidas
+# - puntos_convertidos: Puntos convertidos a monedas (0 por ahora)
+# - fecha_hora: Timestamp automático
+
+### Otros usuario IDs disponibles:
+# 10907310-7f78-4471-a444-1dde279d30d0 (Usuario Test)
+# 53442c36-2860-4fb5-b349-7bf8350c4a3b (franco)
+# 8722b810-bc71-428d-aac2-e60e0b7aca96 (ulima)
+# b2ab5f49-5e64-4183-9afb-c45cb817cebb (Juler)
