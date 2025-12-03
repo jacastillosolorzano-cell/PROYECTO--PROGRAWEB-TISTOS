@@ -5,9 +5,8 @@ import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { BrowserRouter, Routes, Route, HashRouter, useParams } from "react-router-dom";
-import { SaldoProvider } from './contexts/SaldoContext'; 
-
+import { HashRouter, Routes, Route } from "react-router-dom";
+import { SaldoProvider } from "./contexts/SaldoContext";
 
 const Login = lazy(() => import("./pages/Login"));
 const Register = lazy(() => import("./pages/Register"));
@@ -20,44 +19,50 @@ const Saldo = lazy(() => import("./pages/Saldo"));
 const Discover = lazy(() => import("./pages/Discover"));
 const Inbox = lazy(() => import("./pages/Inbox"));
 const Create = lazy(() => import("./pages/Create"));
-const NotFound = lazy(() => import("./pages/NotFound"));
 const ChatView = lazy(() => import("./pages/ChatView"));
-const Viewer = lazy(() => import("./pages/Viewer"));
-const queryClient = new QueryClient();
+const StreamView = lazy(() => import("./pages/StreamView"));
+const NotFound = lazy(() => import("./pages/NotFound"));
 
-const ViewerWrapper = () => {
-  const { id_sesion } = useParams<{ id_sesion: string }>();
-  return id_sesion ? <Viewer streamId={id_sesion} /> : <div>Stream no encontrado</div>;
-};
+const queryClient = new QueryClient();
 
 createRoot(document.getElementById("root")!).render(
   <React.StrictMode>
     <QueryClientProvider client={queryClient}>
       <TooltipProvider>
-        <SaldoProvider>  
+        <SaldoProvider>
           <Toaster />
           <Sonner />
+
           <HashRouter>
             <Suspense fallback={<div className="p-4">Cargando...</div>}>
               <Routes>
+                {/* Auth */}
                 <Route path="/" element={<Login />} />
                 <Route path="/login" element={<Login />} />
                 <Route path="/register" element={<Register />} />
+
+                {/* Info */}
                 <Route path="/about" element={<AboutUs />} />
                 <Route path="/terms" element={<TermsAndConditions />} />
+
+                {/* App */}
                 <Route path="/index" element={<Index />} />
                 <Route path="/profile" element={<Profile />} />
                 <Route path="/studio" element={<Studio />} />
                 <Route path="/saldo" element={<Saldo />} />
                 <Route path="/discover" element={<Discover />} />
                 <Route path="/inbox" element={<Inbox />} />
-                <Route path="/chat/:id" element={<ChatView />} />
-                <Route path="/studio" element={<Studio />} />
                 <Route path="/create" element={<Create />} />
+                <Route path="/chat/:id" element={<ChatView />} />
+
+                {/* Viewer (streaming) */}
+                <Route path="/viewer/:id_sesion" element={<StreamView />} />
+
+                {/* 404 */}
                 <Route path="*" element={<NotFound />} />
-                <Route path="/viewer/:id_sesion" element={<ViewerWrapper />} />
               </Routes>
             </Suspense>
+
             <Toaster />
           </HashRouter>
         </SaldoProvider>
