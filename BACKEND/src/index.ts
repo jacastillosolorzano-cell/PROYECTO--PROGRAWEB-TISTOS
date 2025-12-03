@@ -35,11 +35,28 @@ function logErrorSafe(context: string, error: any) {
     }
 }
 
+// Configuración CORS: permitir el frontend configurado y orígenes de desarrollo
+const allowedOrigins = (process.env.FRONTEND_URL || "").split(",").filter(Boolean);
+// añadir orígenes locales útiles en desarrollo
+if (process.env.NODE_ENV !== 'production') {
+    allowedOrigins.push("http://localhost:5173", "http://localhost:3000");
+}
+
 app.use(cors({
-    origin: process.env.FRONTEND_URL,
-    methods: ["GET", "POST"],
+    origin: (origin, callback) => {
+        // Si no hay origin (petición desde curl o servidor), permitir
+        if (!origin) return callback(null, true);
+        if (allowedOrigins.length === 0) return callback(null, true);
+        if (allowedOrigins.includes(origin)) return callback(null, true);
+        return callback(new Error('CORS policy: origin not allowed'), false);
+    },
+    methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+    allowedHeaders: ["Content-Type", "Authorization"],
     credentials: true
 }));
+
+// Responder preflight OPTIONS para todas las rutas
+app.options('*', cors());
 
 app.use(bodyParser.json());
 app.use(bodyParser.urlencoded({ extended: true }));
