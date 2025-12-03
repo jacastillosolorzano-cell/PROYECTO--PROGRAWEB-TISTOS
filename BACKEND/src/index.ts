@@ -29,6 +29,16 @@ app.use(cors());
 app.use(bodyParser.json());
 app.use(bodyParser.urlencoded({ extended: true }));
 
+// Capturar errores de parseo JSON (body-parser) y devolver respuesta JSON genérica
+// Evita que body-parser devuelva HTML con stack traces al cliente
+app.use((err: any, req: Request, resp: Response, next: any) => {
+    if (err && err instanceof SyntaxError && 'body' in err) {
+        console.warn('JSON inválido en la petición');
+        return resp.status(400).json({ error: 'JSON inválido' });
+    }
+    next(err);
+});
+
 // =========================
 //  SOCKET.IO CONFIG
 // =========================
