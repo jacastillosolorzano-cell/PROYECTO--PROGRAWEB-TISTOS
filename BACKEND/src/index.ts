@@ -21,7 +21,7 @@ function normalizeStreamerId(id: any): string {
 
 dotenv.config();
 const app = express();
-const PORT = process.env.PORT;
+const PORT = process.env.PORT || 5003;
 const BCRYPT_ROUNDS = parseInt(process.env.BCRYPT_ROUNDS || "10");
 const prisma = new PrismaClient();
 app.use(cors());

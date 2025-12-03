@@ -6,13 +6,14 @@ import JavierImg from "@/components/imagenes/Javier.jpeg";
 import JoaquinImg from "@/components/imagenes/Joaquin.jfif";
 import MatiasImg from "@/components/imagenes/Matias.jpeg";
 import MarioImg from "@/components/imagenes/Mario.jpeg";
+import JesusImg from "@/components/imagenes/Jesus.jpeg";
 
 const teamMembers = [
   { name: "Javier", lema: "Transformando ideas en código", image: JavierImg },
   { name: "Joaquin", lema: "Apasionado por el diseño intuitivo", image: JoaquinImg },
   { name: "Matias", lema: "Creando lógica que funciona", image: MatiasImg },
   { name: "Mario", lema: "Guiando al equipo hacia el éxito", image: MarioImg },
-  { name: "Jesus", lema: "Amante de los pequeños detalles", image: null },
+  { name: "Jesus", lema: "Amante de los pequeños detalles", image: JesusImg },
 ];
 
 const AboutUs = () => {
