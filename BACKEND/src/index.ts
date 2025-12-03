@@ -238,13 +238,40 @@ app.post("/ruleta/jugar", async (req : Request, resp : Response) => {
             where: progresoWhere
         })
 
-        // Si no tiene progreso, retornar error indicando que necesita puntos/nivel
+        // Si no tiene progreso, intentar crearlo automáticamente si se proporcionó id_streamer
         if (!progreso) {
-            resp.status(400).json({ 
-                error: "No tienes puntos asignados. Contacta a un administrador para asignarte puntos.",
-                puntos_disponibles: 0
+            if (!id_streamer_str) {
+                // No podemos adivinar el streamer; requerir intervención
+                resp.status(400).json({ 
+                    error: "No tienes puntos asignados. Contacta a un administrador para asignarte puntos.",
+                    puntos_disponibles: 0
+                })
+                return
+            }
+
+            // Buscar un nivel activo del streamer para inicializar puntos
+            const nivelInicial = await prisma.nivelEspectador.findFirst({
+                where: { id_streamer: id_streamer_str, activo: true },
+                orderBy: { orden: 'asc' }
             })
-            return
+
+            if (!nivelInicial) {
+                resp.status(400).json({ 
+                    error: "No hay niveles de espectador configurados para este streamer. Contacta al streamer o administrador.",
+                    puntos_disponibles: 0
+                })
+                return
+            }
+
+            // Crear progreso inicial con puntos por defecto (por ejemplo 1000)
+            progreso = await prisma.progresoEspectador.create({
+                data: {
+                    id_espectador,
+                    id_streamer: id_streamer_str,
+                    puntos_actuales: 1000,
+                    id_nivel_espectador: nivelInicial.id_nivel_espectador
+                }
+            })
         }
 
         // Verificar que tiene suficientes puntos
