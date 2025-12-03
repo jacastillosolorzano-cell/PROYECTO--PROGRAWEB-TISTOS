@@ -196,12 +196,19 @@ app.post("/ruleta/jugar", async (req : Request, resp : Response) => {
         const { id_espectador, puntos_apostados, id_streamer } = req.body
         const id_streamer_str = normalizeStreamerId(id_streamer)
 
-        if (!id_espectador || !puntos_apostados) {
+        if (!id_espectador || puntos_apostados === undefined || puntos_apostados === null) {
             resp.status(400).json({ error: "id_espectador y puntos_apostados son requeridos" })
             return
         }
 
-        // Verificar que el usuario existe
+        // Parsear y validar puntos_apostados
+        const puntosNum = Number(puntos_apostados)
+        if (!Number.isInteger(puntosNum) || puntosNum <= 0) {
+            resp.status(400).json({ error: "puntos_apostados debe ser un entero positivo" })
+            return
+        }
+
+        // Verificar que el usuario existe y obtener perfil
         const usuario = await prisma.usuario.findUnique({
             where: { id_usuario: id_espectador },
             include: { perfilEspectador: true }
@@ -223,17 +230,16 @@ app.post("/ruleta/jugar", async (req : Request, resp : Response) => {
             })
         }
 
-        // Obtener o crear el progreso del espectador (para los puntos)
+        // Obtener el progreso del espectador (si el usuario tiene varios progresos, usamos el del streamer si se envía)
+        let progresoWhere: any = { id_espectador }
+        if (id_streamer_str) progresoWhere.id_streamer = id_streamer_str
+
         let progreso = await prisma.progresoEspectador.findFirst({
-            where: { 
-                id_espectador
-            }
+            where: progresoWhere
         })
 
-        // Si no tiene progreso, no podemos jugar sin tener un nivel asignado
+        // Si no tiene progreso, retornar error indicando que necesita puntos/nivel
         if (!progreso) {
-            // Crear un progreso temporal sin nivel (esto requiere crear primero un nivel)
-            // Por ahora, retornar error
             resp.status(400).json({ 
                 error: "No tienes puntos asignados. Contacta a un administrador para asignarte puntos.",
                 puntos_disponibles: 0
@@ -242,11 +248,11 @@ app.post("/ruleta/jugar", async (req : Request, resp : Response) => {
         }
 
         // Verificar que tiene suficientes puntos
-        if (progreso.puntos_actuales < puntos_apostados) {
+        if ((progreso.puntos_actuales ?? 0) < puntosNum) {
             resp.status(400).json({ 
                 error: "No tienes suficientes puntos", 
-                puntos_disponibles: progreso.puntos_actuales,
-                puntos_requeridos: puntos_apostados
+                puntos_disponibles: progreso.puntos_actuales ?? 0,
+                puntos_requeridos: puntosNum
             })
             return
         }
@@ -258,7 +264,7 @@ app.post("/ruleta/jugar", async (req : Request, resp : Response) => {
             { label: "+20", monedas: 20 },
             { label: "+50", monedas: 50 },
             { label: "+100", monedas: 100 },
-            { label: "x2", monedas: 50 } // especial: x2 = 50 monedas
+            { label: "x2", monedas: 50 } // especial: x2 = 50 monedas (se puede tratar diferente si se desea)
         ]
 
         // Elegir un sector aleatorio
@@ -270,53 +276,61 @@ app.post("/ruleta/jugar", async (req : Request, resp : Response) => {
             return
         }
 
-        const monedas_ganadas = sectorAleatorio.monedas
+        let monedas_ganadas = Number(sectorAleatorio.monedas)
 
-        // Registrar la jugada en la base de datos
-        const jugada = await prisma.jugadaRuleta.create({
-            data: {
-                id_espectador,
-                id_streamer: id_streamer_str,
-                puntos_apostados,
-                resultado_segmento: sectorAleatorio.label,
-                monedas_ganadas,
-                puntos_convertidos: 0
-            }
+        // Si el sector es una multiplicación (ej. x2) se podría aplicar otra lógica
+        if (String(sectorAleatorio.label).startsWith('x')) {
+            // ejemplo simple: x2 duplica las monedas según la apuesta (opcional)
+            const mult = parseInt(String(sectorAleatorio.label).substring(1)) || 1
+            monedas_ganadas = puntosNum * mult
+        }
+
+        // Ejecutar todo en transacción para evitar estados intermedios
+        const result = await prisma.$transaction(async (tx) => {
+            const jugada = await tx.jugadaRuleta.create({
+                data: {
+                    id_espectador,
+                    id_streamer: id_streamer_str,
+                    puntos_apostados: puntosNum,
+                    resultado_segmento: sectorAleatorio.label,
+                    monedas_ganadas,
+                    puntos_convertidos: 0
+                }
+            })
+
+            // Actualizar el saldo de monedas del usuario (SUMAR)
+            await tx.perfilEspectador.update({
+                where: { id_usuario: id_espectador },
+                data: { saldo_monedas: { increment: monedas_ganadas } }
+            })
+
+            // Actualizar los puntos del usuario (RESTAR)
+            await tx.progresoEspectador.update({
+                where: { id_progreso: progreso!.id_progreso },
+                data: { puntos_actuales: { decrement: puntosNum } }
+            })
+
+            return { jugada }
         })
 
-        // Actualizar el saldo de monedas del usuario (SUMAR)
-        await prisma.perfilEspectador.update({
-            where: { id_usuario: id_espectador },
-            data: { saldo_monedas: { increment: monedas_ganadas } }
-        })
-
-        // Actualizar los puntos del usuario (RESTAR)
-        // Usar el id_progreso directamente
-        await prisma.progresoEspectador.update({
-            where: { id_progreso: progreso.id_progreso },
-            data: { puntos_actuales: { decrement: puntos_apostados } }
-        })
-
-        // Obtener los datos actualizados
-        const perfilActualizado = await prisma.perfilEspectador.findUnique({
-            where: { id_usuario: id_espectador }
-        })
-
-        const progresoActualizado = await prisma.progresoEspectador.findFirst({
-            where: { 
-                id_espectador
-            }
-        })
+        // Obtener los datos actualizados fuera de la transacción
+        const perfilActualizado = await prisma.perfilEspectador.findUnique({ where: { id_usuario: id_espectador } })
+        const progresoActualizado = await prisma.progresoEspectador.findFirst({ where: progresoWhere })
 
         resp.status(200).json({
-            jugada_id: jugada.id_jugada,
-            resultado_segmento: jugada.resultado_segmento,
-            monedas_ganadas: jugada.monedas_ganadas,
+            jugada_id: result.jugada.id_jugada,
+            resultado_segmento: result.jugada.resultado_segmento,
+            monedas_ganadas: result.jugada.monedas_ganadas,
             saldo_monedas_nuevo: perfilActualizado?.saldo_monedas || 0,
             puntos_actuales: progresoActualizado?.puntos_actuales || 0
         })
     } catch (error) {
-        console.error("Error en ruleta:", error)
+        console.error("Error en ruleta:", error, { body: req.body })
+        const prismaErr = error as PrismaClientKnownRequestError
+        if (prismaErr && prismaErr.code) {
+            // Manejar errores conocidos de Prisma de forma más informativa
+            return resp.status(500).json({ error: `Error de base de datos: ${prismaErr.message}` })
+        }
         resp.status(500).json({ error: "Error al procesar la jugada de ruleta" })
     }
 })
