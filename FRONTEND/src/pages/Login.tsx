@@ -13,91 +13,88 @@ const Login = () => {
 
   const navigate = useNavigate();
 
+  console.log("[Login] BACKEND_URL =", BACKEND_URL);
+
   const handleLogin = async (e: React.FormEvent) => {
-  e.preventDefault();
-  setError("");
+    e.preventDefault();
+    setError("");
 
-  try {
-    const resp = await fetch(`${BACKEND_URL}/auth/login`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        correo: email,
-        contrasena: password,
-      }),
-    });
+    console.log("[Login] handleLogin llamado");
+    console.log("[Login] Enviando a:", `${BACKEND_URL}/auth/login`);
+    console.log("[Login] Payload:", { correo: email, contrasena: password });
 
-    let data: any;
     try {
-      data = await resp.json();
-    } catch {
-      setError("Respuesta inesperada del servidor");
-      return;
-    }
+      const resp = await fetch(`${BACKEND_URL}/auth/login`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          correo: email,
+          contrasena: password,
+        }),
+      });
 
-    console.log("Login response:", resp.status, data);
-
-    if (!resp.ok) {
-      setError(data?.error || "Correo y/o contraseña incorrectos");
-      return;
-    }
-
-    // -----------------------------
-    // Intentar leer token/usuario
-    // -----------------------------
-    let token: string | undefined = data.token;
-    let usuario: any = data.usuario;
-
-    // Compatibilidad con backend viejo:
-    // { id_usuario, email, rol, ..., token }
-    if (!usuario && token) {
-      const { token: _t, contrasena_hash, ...rest } = data;
-      if (rest.id_usuario) {
-        usuario = rest;
+      let data: any;
+      try {
+        data = await resp.json();
+      } catch {
+        console.warn("[Login] No se pudo parsear JSON de la respuesta");
+        setError("Respuesta inesperada del servidor");
+        return;
       }
-    }
 
-    if (!token || !usuario) {
-      setError("Respuesta de login inválida del servidor");
-      return;
-    }
+      console.log("[Login] Respuesta:", resp.status, data);
 
-    // ✅ Guardar token para /regalos, /notificaciones, etc.
-    localStorage.setItem("authToken", token);
+      if (!resp.ok) {
+        setError(data?.error || "Correo y/o contraseña incorrectos");
+        return;
+      }
 
-    // ✅ Guardar usuario completo (ya sin password)
-    localStorage.setItem("usuario", JSON.stringify(usuario));
+      let token: string | undefined = data.token;
+      let usuario: any = data.usuario;
 
-    // Inicializar perfil de espectador en backend
-    try {
-      await fetch(
-        `${BACKEND_URL}/usuarios/${usuario.id_usuario}/inicializar-perfil`,
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${token}`,
-          },
+      if (!usuario && token) {
+        const { token: _t, contrasena_hash, ...rest } = data;
+        if (rest.id_usuario) {
+          usuario = rest;
         }
-      );
-    } catch (perfil_error) {
-      console.error("Error al inicializar perfil:", perfil_error);
+      }
+
+      if (!token || !usuario) {
+        console.error("[Login] Faltan token o usuario en la respuesta");
+        setError("Respuesta de login inválida del servidor");
+        return;
+      }
+
+      localStorage.setItem("authToken", token);
+      localStorage.setItem("usuario", JSON.stringify(usuario));
+
+      try {
+        await fetch(
+          `${BACKEND_URL}/usuarios/${usuario.id_usuario}/inicializar-perfil`,
+          {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              Authorization: `Bearer ${token}`,
+            },
+          }
+        );
+      } catch (perfil_error) {
+        console.error("Error al inicializar perfil:", perfil_error);
+      }
+
+      if (usuario.rol !== "STREAMER") {
+        console.warn(
+          "El usuario no es streamer. Solo podrá ver transmisiones."
+        );
+      }
+
+      navigate("/index");
+    } catch (error) {
+      console.error("[Login] Error de red/fetch:", error);
+      setError("Error al conectar con el servidor");
     }
-
-    // (Opcional) log de rol
-    if (usuario.rol !== "STREAMER") {
-      console.warn(
-        "El usuario no es streamer. Solo podrá ver transmisiones."
-      );
-    }
-
-    navigate("/index");
-  } catch (error) {
-    console.error(error);
-    setError("Error al conectar con el servidor");
-  }
-};
-
+  };
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-background p-4">
