@@ -1,12 +1,21 @@
 import { useNavigate } from "react-router-dom";
 import { useState, useEffect } from "react";
-import { io } from 'socket.io-client';
+import { io } from "socket.io-client";
 import { Button } from "@/components/ui/button";
-import { ArrowLeft, UserCheck, GraduationCap, Flame, Gift, Edit, Trash2, PlusCircle } from "lucide-react";
+import {
+  ArrowLeft,
+  UserCheck,
+  GraduationCap,
+  Flame,
+  Gift,
+  Edit,
+  Trash2,
+  PlusCircle,
+} from "lucide-react";
 import { toast } from "sonner";
 import StreamerProgress from "@/components/StreamerProgress";
 import OverlayAnimator from "@/components/OverlayAnimator";
-import { BACKEND_URL } from "@/config"
+import { BACKEND_URL } from "@/config";
 
 const posts = [
   {
@@ -34,122 +43,179 @@ const Studio = () => {
   const [tab, setTab] = useState("inspiracion");
   const [regalos, setRegalos] = useState<any[]>([]);
   const [showOverlay, setShowOverlay] = useState(false);
-  const [nuevoRegalo, setNuevoRegalo] = useState({ nombre: "", costo: "", puntos: "" });
+  const [nuevoRegalo, setNuevoRegalo] = useState({
+    nombre: "",
+    costo: "",
+    puntos: "",
+  });
   const [editId, setEditId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
 
-  // Obtener el usuario actual del localStorage
-  const usuarioActual = JSON.parse(localStorage.getItem("tistos_current_user") || "{}")
-  const id_streamer = usuarioActual.id_usuario
+  // ===========================
+  //   OBTENER USUARIO ACTUAL
+  // ===========================
+  // Intentamos varias keys por compatibilidad:
+  // - "tistos_current_user" (modo streamer)
+  // - "usuario" (user que viene del backend)
+  // - "currentUser" (invitado / frontend)
+  const rawUsuario =
+    localStorage.getItem("tistos_current_user") ||
+    localStorage.getItem("usuario") ||
+    localStorage.getItem("currentUser") ||
+    "{}";
 
-  // Cambiar rol a Streamer y cargar regalos al montar el componente
+  const usuarioActual = JSON.parse(rawUsuario);
+
+  // El id de streamer puede venir como id_usuario (backend) o id (frontend)
+  const id_streamer: string | undefined =
+    usuarioActual.id_usuario ?? usuarioActual.id;
+
+  console.log("usuarioActual Studio:", usuarioActual);
+  console.log("id_streamer Studio:", id_streamer);
+
+  // ============================================
+  // Cambiar rol a Streamer y cargar regalos
+  // ============================================
   useEffect(() => {
     const ensureStreamerAndLoad = async () => {
-      if (!id_streamer) return
+      if (!id_streamer) {
+        console.warn("No hay id_streamer, no se puede cargar Studio");
+        toast.error("No se encontró tu usuario streamer. Vuelve a iniciar sesión.");
+        setLoading(false);
+        return;
+      }
+
       try {
         // Consultar al backend si el usuario existe y es STREAMER
-        const check = await fetch(`${BACKEND_URL}/usuarios/${id_streamer}`)
+        const check = await fetch(`${BACKEND_URL}/usuarios/${id_streamer}`);
         if (check.status === 200) {
-          const u = await check.json()
-          if (u.rol === 'STREAMER') {
-            await cargarRegalos()
-            return
+          const u = await check.json();
+          if (u.rol === "STREAMER") {
+            await cargarRegalos();
+            return;
           }
         }
 
-        // Si no es streamer o no existe, intentar cambiar rol (backend maneja creación/validación)
-        await cambiarARolStreamer()
-        await cargarRegalos()
+        // Si no es streamer o no existe, intentar cambiar rol
+        await cambiarARolStreamer();
+        await cargarRegalos();
       } catch (err) {
-        console.error('Error validando streamer:', err)
-        toast.error('No fue posible verificar el streamer')
+        console.error("Error validando streamer:", err);
+        toast.error("No fue posible verificar el streamer");
+        setLoading(false);
       }
-    }
+    };
 
-    ensureStreamerAndLoad()
-  }, [id_streamer])
+    ensureStreamerAndLoad();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [id_streamer]);
 
-  // Conectar Socket.IO y escuchar regalos en tiempo real
+  // ============================================
+  //   Socket.IO: escuchar regalos en tiempo real
+  // ============================================
   useEffect(() => {
     if (!id_streamer) return;
+
     const socket = io(BACKEND_URL, { autoConnect: true });
 
-    socket.on('connect', () => {
-      console.log('Socket conectado (frontend):', socket.id);
-      socket.emit('join_streamer_room', id_streamer);
+    socket.on("connect", () => {
+      console.log("Socket conectado (frontend):", socket.id);
+      socket.emit("join_streamer_room", id_streamer);
     });
 
-    socket.on('gift_received', (data: any) => {
-      // Disparar evento global para OverlayAnimator
+    socket.on("gift_received", (data: any) => {
       const detail = {
-        type: 'gift',
+        type: "gift",
         from: data.espectador_nombre || data.id_espectador,
-        giftName: data.regalo?.nombre || data.id_regalo || 'Regalo',
+        giftName: data.regalo?.nombre || data.id_regalo || "Regalo",
         points: data.puntos_otorgados || data.puntos || 0,
-        multiplier: data.cantidad || 1
+        multiplier: data.cantidad || 1,
       };
-      window.dispatchEvent(new CustomEvent('tistos:overlay', { detail }));
+      window.dispatchEvent(new CustomEvent("tistos:overlay", { detail }));
     });
 
-    socket.on('disconnect', () => {
-      console.log('Socket desconectado (frontend)')
-    })
+    socket.on("disconnect", () => {
+      console.log("Socket desconectado (frontend)");
+    });
 
     return () => {
       socket.disconnect();
-    }
+    };
   }, [id_streamer]);
 
   const cambiarARolStreamer = async () => {
+    if (!id_streamer) return;
+
     try {
       const resp = await fetch(`${BACKEND_URL}/usuarios/${id_streamer}/rol`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ rol: "STREAMER" })
-      })
+        body: JSON.stringify({ rol: "STREAMER" }),
+      });
 
       if (resp.status === 200) {
-        const usuarioActualizado = await resp.json()
-        // Actualizar el usuario en localStorage
-        localStorage.setItem("tistos_current_user", JSON.stringify(usuarioActualizado))
-        toast.success("¡Bienvenido al modo Streamer!")
+        const usuarioActualizado = await resp.json();
+        // Guardamos como tistos_current_user para futuras lecturas
+        localStorage.setItem(
+          "tistos_current_user",
+          JSON.stringify(usuarioActualizado)
+        );
+        toast.success("¡Bienvenido al modo Streamer!");
       } else {
-        toast.error("Error al cambiar al modo streamer")
+        toast.error("Error al cambiar al modo streamer");
       }
     } catch (error) {
-      toast.error("Error al cambiar al modo streamer")
-      console.error(error)
+      toast.error("Error al cambiar al modo streamer");
+      console.error(error);
     }
-  }
+  };
 
   const cargarRegalos = async () => {
+    if (!id_streamer) return;
+
     try {
-      setLoading(true)
-      const resp = await fetch(`${BACKEND_URL}/regalos/streamer/${id_streamer}`)
+      setLoading(true);
+      const resp = await fetch(
+        `${BACKEND_URL}/regalos/streamer/${id_streamer}`
+      );
       if (resp.status === 200) {
-        const data = await resp.json()
-        setRegalos(data)
+        const data = await resp.json();
+        setRegalos(data);
+      } else {
+        console.warn(
+          "Error al obtener regalos, status:",
+          resp.status,
+          await resp.text()
+        );
       }
     } catch (error) {
-      toast.error("Error al cargar los regalos")
-      console.error(error)
+      toast.error("Error al cargar los regalos");
+      console.error(error);
     } finally {
-      setLoading(false)
+      setLoading(false);
     }
-  }
+  };
 
-  // Simula recibir un regalo
+  // Simula recibir un regalo (dummy)
   const recibirRegalo = (nombre: string, usuario: string) => {
     setShowOverlay(true);
     setTimeout(() => setShowOverlay(false), 2000);
   };
 
-  // Crear o editar regalo
+  // ============================================
+  //   Crear o editar regalo
+  // ============================================
   const handleSaveRegalo = async (e: React.FormEvent) => {
     e.preventDefault();
+
+    if (!id_streamer) {
+      toast.error("No se encontró tu usuario streamer. Vuelve a iniciar sesión.");
+      return;
+    }
+
     if (!nuevoRegalo.nombre || !nuevoRegalo.costo || !nuevoRegalo.puntos) {
-      toast.error("Completa todos los campos")
-      return
+      toast.error("Completa todos los campos");
+      return;
     }
 
     try {
@@ -161,72 +227,79 @@ const Studio = () => {
           body: JSON.stringify({
             nombre: nuevoRegalo.nombre,
             costo_monedas: Number(nuevoRegalo.costo),
-            puntos_otorgados: Number(nuevoRegalo.puntos)
-          })
-        })
+            puntos_otorgados: Number(nuevoRegalo.puntos),
+          }),
+        });
 
         if (resp.status === 200) {
-          toast.success("Regalo actualizado")
-          setEditId(null)
-          await cargarRegalos()
+          toast.success("Regalo actualizado");
+          setEditId(null);
+          await cargarRegalos();
         } else {
-          toast.error("Error al actualizar el regalo")
+          toast.error("Error al actualizar el regalo");
         }
       } else {
         // Crear nuevo regalo
+        const payload = {
+          nombre: nuevoRegalo.nombre,
+          costo_monedas: Number(nuevoRegalo.costo),
+          puntos_otorgados: Number(nuevoRegalo.puntos),
+          id_streamer,
+        };
+
+        console.log("Payload /regalos/crear:", payload);
+
         const resp = await fetch(`${BACKEND_URL}/regalos/crear`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            nombre: nuevoRegalo.nombre,
-            costo_monedas: Number(nuevoRegalo.costo),
-            puntos_otorgados: Number(nuevoRegalo.puntos),
-            id_streamer
-          })
-        })
+          body: JSON.stringify(payload),
+        });
 
         if (resp.status === 200) {
-          toast.success("Regalo creado")
-          await cargarRegalos()
+          toast.success("Regalo creado");
+          await cargarRegalos();
         } else {
-          toast.error("Error al crear el regalo")
+          const txt = await resp.text();
+          console.error("Error backend /regalos/crear:", txt);
+          toast.error("Error al crear el regalo");
         }
       }
-      setNuevoRegalo({ nombre: "", costo: "", puntos: "" })
+
+      setNuevoRegalo({ nombre: "", costo: "", puntos: "" });
     } catch (error) {
-      toast.error("Error al guardar el regalo")
-      console.error(error)
+      toast.error("Error al guardar el regalo");
+      console.error(error);
     }
-  }
+  };
 
   // Editar regalo
   const handleEdit = (regalo: any) => {
-    setEditId(regalo.id_regalo)
-    setNuevoRegalo({ 
-      nombre: regalo.nombre, 
-      costo: regalo.costo_monedas.toString(), 
-      puntos: regalo.puntos_otorgados.toString() 
-    })
-  }
+    setEditId(regalo.id_regalo);
+    setNuevoRegalo({
+      nombre: regalo.nombre,
+      costo: regalo.costo_monedas.toString(),
+      puntos: regalo.puntos_otorgados.toString(),
+    });
+  };
 
   // Eliminar regalo
   const handleDelete = async (id_regalo: string) => {
     try {
       const resp = await fetch(`${BACKEND_URL}/regalos/${id_regalo}`, {
-        method: "DELETE"
-      })
+        method: "DELETE",
+      });
 
       if (resp.status === 200) {
-        toast.success("Regalo eliminado")
-        await cargarRegalos()
+        toast.success("Regalo eliminado");
+        await cargarRegalos();
       } else {
-        toast.error("Error al eliminar el regalo")
+        toast.error("Error al eliminar el regalo");
       }
     } catch (error) {
-      toast.error("Error al eliminar el regalo")
-      console.error(error)
+      toast.error("Error al eliminar el regalo");
+      console.error(error);
     }
-  }
+  };
 
   return (
     <div className="min-h-screen bg-background relative pb-20">
@@ -239,15 +312,20 @@ const Studio = () => {
       >
         <ArrowLeft className="w-5 h-5" />
       </Button>
-      <h2 className="text-3xl font-bold text-center pt-8 mb-6">Tistos Studio</h2>
+      <h2 className="text-3xl font-bold text-center pt-8 mb-6">
+        Tistos Studio
+      </h2>
 
       <OverlayAnimator />
       <StreamerProgress />
+
       {/* Estadísticas */}
       <div className="max-w-xl mx-auto bg-card rounded-xl p-6 mb-6 shadow flex flex-col gap-4">
         <div className="flex items-center justify-between mb-2">
           <span className="font-bold text-lg">Estadísticas</span>
-          <Button variant="link" size="sm">Ver todo</Button>
+          <Button variant="link" size="sm">
+            Ver todo
+          </Button>
         </div>
         <div className="grid grid-cols-3 gap-4 text-center">
           <div>
@@ -267,7 +345,7 @@ const Studio = () => {
           </div>
         </div>
       </div>
-      
+
       {/* Herramientas */}
       <div className="max-w-xl mx-auto flex justify-between items-center mb-3 gap-2">
         <Button variant="outline" size="sm" className="flex-1 gap-2">
@@ -276,7 +354,6 @@ const Studio = () => {
         <Button variant="outline" size="sm" className="flex-1 gap-2">
           <GraduationCap className="w-4 h-4" /> Academia de creadores
         </Button>
-        
       </div>
       <div className="max-w-xl mx-auto flex justify-between items-center mb-6 gap-2">
         <Button variant="outline" size="sm" className="flex-1 gap-2">
@@ -298,16 +375,27 @@ const Studio = () => {
 
       {/* Filtros */}
       <div className="max-w-xl mx-auto flex gap-2 mb-6">
-        <Button variant="outline" size="sm">Trending</Button>
-        <Button variant="outline" size="sm">Recommended</Button>
+        <Button variant="outline" size="sm">
+          Trending
+        </Button>
+        <Button variant="outline" size="sm">
+          Recommended
+        </Button>
       </div>
 
       {/* Lista de posts simulados */}
       <div className="max-w-xl mx-auto mb-8">
         {posts.map((post, idx) => (
-          <div key={post.id} className="flex items-center gap-3 py-3 border-b border-border">
+          <div
+            key={post.id}
+            className="flex items-center gap-3 py-3 border-b border-border"
+          >
             <span className="font-bold text-primary">{idx + 1}</span>
-            <img src={post.img} alt={post.usuario} className="w-12 h-12 rounded-lg object-cover" />
+            <img
+              src={post.img}
+              alt={post.usuario}
+              className="w-12 h-12 rounded-lg object-cover"
+            />
             <div className="flex-1">
               <div className="font-semibold">{post.texto}</div>
               <div className="text-xs text-muted-foreground flex gap-2">
@@ -315,7 +403,11 @@ const Studio = () => {
                 <span>❤️ {post.likes}</span>
               </div>
             </div>
-            <Button variant="ghost" size="icon" onClick={() => recibirRegalo("Rosa", post.usuario)}>
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={() => recibirRegalo("Rosa", post.usuario)}
+            >
               <Gift className="w-5 h-5 text-primary" />
             </Button>
           </div>
@@ -331,23 +423,29 @@ const Studio = () => {
           <input
             type="text"
             placeholder="Nombre"
-            className="border rounded  w-15 bg-background"
+            className="border rounded w-15 bg-background px-2 py-1"
             value={nuevoRegalo.nombre}
-            onChange={e => setNuevoRegalo({ ...nuevoRegalo, nombre: e.target.value })}
+            onChange={(e) =>
+              setNuevoRegalo({ ...nuevoRegalo, nombre: e.target.value })
+            }
           />
           <input
             type="number"
             placeholder="Costo"
-            className="border rounded w-12 bg-background"
+            className="border rounded w-12 bg-background px-2 py-1"
             value={nuevoRegalo.costo}
-            onChange={e => setNuevoRegalo({ ...nuevoRegalo, costo: e.target.value })}
+            onChange={(e) =>
+              setNuevoRegalo({ ...nuevoRegalo, costo: e.target.value })
+            }
           />
           <input
             type="number"
             placeholder="Puntos"
             className="border rounded px-2 py-1 w-20 bg-background"
             value={nuevoRegalo.puntos}
-            onChange={e => setNuevoRegalo({ ...nuevoRegalo, puntos: e.target.value })}
+            onChange={(e) =>
+              setNuevoRegalo({ ...nuevoRegalo, puntos: e.target.value })
+            }
           />
           <Button type="submit" size="sm" variant="secondary">
             {editId ? <Edit className="w-4 h-4" /> : <PlusCircle className="w-4 h-4" />}
@@ -357,17 +455,34 @@ const Studio = () => {
           {loading ? (
             <p className="text-muted-foreground">Cargando regalos...</p>
           ) : regalos.length === 0 ? (
-            <p className="text-muted-foreground">No hay regalos. Crea uno para comenzar.</p>
+            <p className="text-muted-foreground">
+              No hay regalos. Crea uno para comenzar.
+            </p>
           ) : (
-            regalos.map(regalo => (
-              <div key={regalo.id_regalo} className="flex items-center gap-2 mb-2">
+            regalos.map((regalo) => (
+              <div
+                key={regalo.id_regalo}
+                className="flex items-center gap-2 mb-2"
+              >
                 <span className="font-semibold">{regalo.nombre}</span>
-                <span className="text-xs text-muted-foreground">Costo: {regalo.costo_monedas}</span>
-                <span className="text-xs text-muted-foreground">Puntos: {regalo.puntos_otorgados}</span>
-                <Button variant="ghost" size="icon" onClick={() => handleEdit(regalo)}>
+                <span className="text-xs text-muted-foreground">
+                  Costo: {regalo.costo_monedas}
+                </span>
+                <span className="text-xs text-muted-foreground">
+                  Puntos: {regalo.puntos_otorgados}
+                </span>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  onClick={() => handleEdit(regalo)}
+                >
                   <Edit className="w-4 h-4" />
                 </Button>
-                <Button variant="ghost" size="icon" onClick={() => handleDelete(regalo.id_regalo)}>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  onClick={() => handleDelete(regalo.id_regalo)}
+                >
                   <Trash2 className="w-4 h-4 text-red-500" />
                 </Button>
               </div>
