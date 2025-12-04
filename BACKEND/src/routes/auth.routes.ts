@@ -36,6 +36,12 @@ export const loginHandler = async (req: Request, resp: Response) => {
 
     const { contrasena_hash: _, ...usuarioSeguro } = usuario as any;
 
+    const JWT_SECRET = process.env.JWT_SECRET;
+    if (!JWT_SECRET) {
+      console.error("Falta JWT_SECRET en .env");
+      return resp.status(500).json({ error: "Config de servidor incompleta" });
+    }
+
     // Crear JWT
     const token = jwt.sign(
       {
@@ -43,14 +49,15 @@ export const loginHandler = async (req: Request, resp: Response) => {
         email: usuario.email,
         rol: usuario.rol,
       },
-      process.env.JWT_SECRET as string,
-      { expiresIn: "1d" } // 1 día, puedes ajustarlo
+      JWT_SECRET,
+      { expiresIn: "1d" }
     );
 
-    // Devolvemos el mismo objeto de antes + token (backward compatible)
+    // 🔴 AQUÍ EL CAMBIO IMPORTANTE
     return resp.status(200).json({
-      ...usuarioSeguro,
       token,
+      usuario: usuarioSeguro,  // 👉 objeto completo
+      ...usuarioSeguro,        // opcional: para compatibilidad con código viejo
     });
   } catch (error) {
     console.error("Error al iniciar sesión:", error);
@@ -60,7 +67,6 @@ export const loginHandler = async (req: Request, resp: Response) => {
 
 // Handler reutilizable para logout
 export const logoutHandler = (_req: Request, resp: Response) => {
-  // Con JWT stateless no hay nada que invalidar en servidor
   return resp.status(200).json({ message: "Sesión cerrada correctamente" });
 };
 
