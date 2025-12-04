@@ -5,7 +5,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Video } from "lucide-react";
 
-import { BACKEND_URL } from "../config"
+import { BACKEND_URL } from "../config";
 
 const Login = () => {
   const [email, setEmail] = useState("");
@@ -15,55 +15,61 @@ const Login = () => {
   const navigate = useNavigate();
 
   const handleLogin = async (e: React.FormEvent) => {
-  e.preventDefault();
+    e.preventDefault();
+    setError("");
 
-  try {
-    const resp = await fetch(`${BACKEND_URL}/login`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        correo: email,
-        contrasena: password
-      })
-    });
+    try {
+      // 🔐 Usar /auth/login (handler nuevo con JWT)
+      const resp = await fetch(`${BACKEND_URL}/auth/login`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          correo: email,
+          contrasena: password,
+        }),
+      });
 
-    const usuario = await resp.json();
+      // 👀 Solo leemos json UNA vez
+      const data = await resp.json();
 
-    if (resp.status === 200) {
+      if (!resp.ok) {
+        setError(data.error || "Correo y/o contraseña incorrectos");
+        return;
+      }
 
-      // Guardar usuario en localStorage
-      localStorage.setItem("usuario", JSON.stringify(usuario)); // <-- CORREGIDO
+      // data debe ser: { id_usuario, nombre, email, rol, token, ... }
+      const { token, ...usuario } = data;
 
-      // Inicializar perfil de espectador
+      // Guardar token y usuario por separado
+      if (token) {
+        localStorage.setItem("authToken", token);
+      }
+      localStorage.setItem("usuario", JSON.stringify(usuario));
+
+      // Inicializar perfil de espectador (no requiere auth, pero podríamos mandarla)
       try {
-        await fetch(`${BACKEND_URL}/usuarios/${usuario.id_usuario}/inicializar-perfil`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" }
-        });
+        await fetch(
+          `${BACKEND_URL}/usuarios/${usuario.id_usuario}/inicializar-perfil`,
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+          }
+        );
       } catch (perfil_error) {
         console.error("Error al inicializar perfil:", perfil_error);
       }
 
-      // (Opcional) Si el usuario NO ES STREAMER, redirigir a otra pantalla
-      if (usuario.rol !== "STREAMER") {
-        console.warn("El usuario no es streamer. Solo podrá ver transmisiones.");
+      // Redirigir según rol
+      if (usuario.rol === "STREAMER") {
+        navigate("/studio");
+      } else {
+        navigate("/index");
       }
-
-      setError("");
-      navigate("/index");
-
-    } else {
-      const errorData = await resp.json();
-      setError(errorData.error || "correo y/o contraseña incorrectos");
+    } catch (err) {
+      console.error(err);
+      setError("Error al conectar con el servidor");
     }
-
-  } catch (error) {
-    setError("Error al conectar con el servidor");
-    console.error(error);
-  }
-};
-
-
+  };
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-background p-4">
@@ -115,7 +121,9 @@ const Login = () => {
 
           <div className="text-center text-sm text-muted-foreground">
             No tienes una cuenta?{" "}
-            <Link to="/register" className="text-primary hover:underline">Regístrate</Link>
+            <Link to="/register" className="text-primary hover:underline">
+              Regístrate
+            </Link>
           </div>
         </div>
 

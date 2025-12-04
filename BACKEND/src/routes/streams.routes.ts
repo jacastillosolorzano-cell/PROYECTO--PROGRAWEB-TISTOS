@@ -1,12 +1,36 @@
 // src/routes/streams.routes.ts
-import { Router, Response } from "express";
+import { Router, Request, Response } from "express";
 import { prisma } from "../prisma/client.js";
 import { v4 as uuidv4 } from "uuid";
 import { authMiddleware, AuthRequest } from "../middleware/auth.middleware.js";
 import { recalcularNivelStreamer } from "../utils/niveles.js";
 
 const router = Router();
+router.get("/:id_sesion", async (req: Request, resp: Response) => {
+  try {
+    const { id_sesion } = req.params;
 
+    const sesion = await prisma.sesionStreaming.findUnique({
+      where: { id_sesion },
+      select: {
+        id_streamer: true,
+        titulo: true,
+        fecha_inicio: true,
+        fecha_fin: true,
+        duracion_minutos: true,
+      },
+    });
+
+    if (!sesion) {
+      return resp.status(404).json({ error: "Sesión no encontrada" });
+    }
+
+    return resp.status(200).json(sesion);
+  } catch (error) {
+    console.error("Error al obtener sesión:", error);
+    return resp.status(500).json({ error: "Error al obtener sesión" });
+  }
+});
 // =================================================================
 //                    Crear stream (solo STREAMER logueado)
 // =================================================================
