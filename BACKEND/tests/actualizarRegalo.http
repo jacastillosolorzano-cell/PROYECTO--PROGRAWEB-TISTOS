@@ -1,0 +1,8 @@
+PUT http://localhost:5002/regalos/f91b5fc8-79e4-4495-9351-4da4f4d9d47c
+Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZF91c3VhcmlvIjoiOTk3ODAwYjctMTRkZS00YzMzLTk1Y2EtYTU1MWQ1NzM4ZWFhIiwiZW1haWwiOiJ1bGltYUBhbG9lLmVkdS5wZSIsInJvbCI6IlNUUkVBTUVSIiwiaWF0IjoxNzY0ODMzNDQ2LCJleHAiOjE3NjQ5MTk4NDZ9._ry90tlUmQDOI0b1iMyzFhhecTAWzFeVHAUcIwYJsh4
+Content-Type: application/json
+
+{
+  "nombre": "Super Gift 2",
+  "costo": 150
+}

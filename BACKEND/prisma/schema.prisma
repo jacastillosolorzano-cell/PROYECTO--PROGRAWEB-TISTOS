@@ -8,6 +8,22 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+enum UsuarioRol {
+  ESPECTADOR
+  STREAMER
+}
+
+enum UsuarioEstado {
+  ACTIVO
+  INACTIVO
+}
+
+enum TipoNotificacion {
+  NIVEL_ESPECTADOR_SUBIDO
+  NIVEL_STREAMER_SUBIDO
+  REGALO_RECIBIDO
+}
+
 model Usuario {
   id_usuario                    String               @id @default(uuid())
   nombre                        String
@@ -167,18 +183,3 @@ model Notificacion {
   usuario         Usuario          @relation(fields: [id_usuario], references: [id_usuario])
 }
 
-enum UsuarioRol {
-  ESPECTADOR
-  STREAMER
-}
-
-enum UsuarioEstado {
-  ACTIVO
-  INACTIVO
-}
-
-enum TipoNotificacion {
-  NIVEL_ESPECTADOR_SUBIDO
-  NIVEL_STREAMER_SUBIDO
-  REGALO_RECIBIDO
-}

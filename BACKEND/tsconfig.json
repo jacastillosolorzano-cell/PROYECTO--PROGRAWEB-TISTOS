@@ -16,7 +16,7 @@
     "sourceMap": true,
 
     "isolatedModules": false,
-    "verbatimModuleSyntax": true
+    "verbatimModuleSyntax": false
   },
 
   "ts-node": {

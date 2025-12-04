@@ -2,9 +2,7 @@ POST http://localhost:5002/usuarios/crear
 Content-Type: application/json
 
 {
-    "nombre" : "Captain Gonax",
-    "email" : "captain@example.com",
-    "contra" : "password123",
-    "rol" : "ESPECTADOR",
-    "estado" : "ACTIVO"
+  "nombre": "Juan Espectador",
+  "email": "juan.espectador@example.com",
+  "contra": "123456"
 }

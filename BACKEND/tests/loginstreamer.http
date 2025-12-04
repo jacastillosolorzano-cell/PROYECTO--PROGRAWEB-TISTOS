@@ -2,6 +2,6 @@ POST http://localhost:5002/auth/login
 Content-Type: application/json
 
 {
-  "correo": "juan.espectador@example.com",
-  "contrasena": "123456"
+  "correo": "ulima@aloe.edu.pe",
+  "contrasena": "ulima123"
 }

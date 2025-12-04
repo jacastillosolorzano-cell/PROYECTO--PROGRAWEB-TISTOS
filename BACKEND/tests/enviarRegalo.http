@@ -1,0 +1,15 @@
+### 1. Login como ESPECTADOR
+POST http://localhost:5002/usuarios/4c296569-84f4-4ad3-975c-272eb2ee7cb9/inicializar-perfil
+Content-Type: application/json
+
+
+### 2. Enviar regalo como ESPECTADOR
+POST http://localhost:5002/regalos/enviar
+Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZF91c3VhcmlvIjoiNGMyOTY1NjktODRmNC00YWQzLTk3NWMtMjcyZWIyZWU3Y2I5IiwiZW1haWwiOiJqdWFuLmVzcGVjdGFkb3JAZXhhbXBsZS5jb20iLCJyb2wiOiJFU1BFQ1RBRE9SIiwiaWF0IjoxNzY0ODM1NDQyLCJleHAiOjE3NjQ5MjE4NDJ9.GA7XjM6u_7pw890Ru9uhJGLGBXnAMV4a9exHKO00FeA
+Content-Type: application/json
+
+{
+  "id_streamer": "997800b7-14de-4c33-95ca-a551d5738eaa",
+  "id_regalo": "7b6d1b34-716f-4214-8559-fef2d0afdf56",
+  "cantidad": 1
+}
