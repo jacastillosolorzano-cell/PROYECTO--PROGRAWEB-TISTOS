@@ -58,11 +58,7 @@ const Studio = () => {
   // - "tistos_current_user" (modo streamer)
   // - "usuario" (user que viene del backend)
   // - "currentUser" (invitado / frontend)
-  const rawUsuario =
-    localStorage.getItem("tistos_current_user") ||
-    localStorage.getItem("usuario") ||
-    localStorage.getItem("currentUser") ||
-    "{}";
+  const rawUsuario = localStorage.getItem("usuario");
 
   const usuarioActual = JSON.parse(rawUsuario);
 
