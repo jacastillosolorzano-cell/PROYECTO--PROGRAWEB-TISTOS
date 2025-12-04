@@ -3,6 +3,7 @@ import { Router, Response } from "express";
 import { prisma } from "../prisma/client.js";
 import { v4 as uuidv4 } from "uuid";
 import { authMiddleware, AuthRequest } from "../middleware/auth.middleware.js";
+import { recalcularNivelStreamer } from "../utils/niveles.js";
 
 const router = Router();
 
@@ -86,7 +87,6 @@ router.post(
       const sesion = await prisma.sesionStreaming.findUnique({
         where: { id_sesion },
       });
-
       if (!sesion) {
         return resp.status(404).json({ error: "Sesión no encontrada" });
       }
@@ -111,14 +111,39 @@ router.post(
         },
       });
 
+      // Actualizar PerfilStreamer (acumulando minutos)
+      let perfil = await prisma.perfilStreamer.findUnique({
+        where: { id_usuario },
+      });
+
+      if (!perfil) {
+        perfil = await prisma.perfilStreamer.create({
+          data: {
+            id_usuario,
+            horas_transmitidas_total: duracion, // almacenamos minutos
+          },
+        });
+      } else {
+        perfil = await prisma.perfilStreamer.update({
+          where: { id_usuario },
+          data: {
+            horas_transmitidas_total: {
+              increment: duracion,
+            },
+          },
+        });
+      }
+
+      // Recalcular nivel del streamer (puede generar notificación)
+      await recalcularNivelStreamer(id_usuario);
+
       resp
         .status(200)
-        .json({ message: "Sesión finalizada", sesion: actualizada });
+        .json({ message: "Sesión finalizada", sesion: actualizada, perfilStreamer: perfil });
     } catch (error) {
       console.error("Error al finalizar sesión de stream:", error);
       resp.status(500).json({ error: "Error al finalizar sesión" });
     }
   }
 );
-
 export default router;

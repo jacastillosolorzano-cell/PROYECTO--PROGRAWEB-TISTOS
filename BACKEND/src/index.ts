@@ -14,6 +14,10 @@ import ruletaRouter from "./routes/ruleta.routes.js";
 import streamsRouter from "./routes/streams.routes.js";
 import chatRouter from "./routes/chat.routes.js";
 import authRouter, { loginHandler, logoutHandler } from "./routes/auth.routes.js";
+import streamersRouter from "./routes/streamers.route.js";
+import monedasRouter from "./routes/monedas.routes.js";
+import nivelesRouter from "./routes/niveles.routes.js";
+import notificacionesRouter from "./routes/notificaciones.routes.js";
 
 dotenv.config();
 const app = express();
@@ -35,7 +39,11 @@ app.use("/regalos", regalosRouter);
 app.use("/ruleta", ruletaRouter);
 app.use("/streams", streamsRouter);
 app.use("/sesiones", chatRouter);
+app.use("/streamers", streamersRouter);
 app.use("/auth", authRouter);
+app.use("/monedas", monedasRouter);
+app.use("/niveles", nivelesRouter);
+app.use("/notificaciones", notificacionesRouter);
 app.post("/login", loginHandler);
 app.post("/logout", logoutHandler);
 
@@ -60,7 +68,6 @@ app.use(
     res.status(500).json({ error: "Error interno del servidor" });
   }
 );
-
 
 app.use((err: any, req: Request, resp: Response, next: NextFunction) => {
   if (err && err instanceof SyntaxError && "body" in err) {
