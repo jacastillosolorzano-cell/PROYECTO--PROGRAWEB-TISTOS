@@ -710,32 +710,28 @@ server.listen(PORT, () => {
 //              Obtener progreso del espectador
 // =================================================================
 app.get("/usuarios/:id_usuario/progreso", async (req: Request, resp: Response) => {
-    try {
-        const { id_usuario } = req.params;
+  try {
+    const { id_usuario } = req.params;
 
+    const progresos = await prisma.progresoEspectador.findMany({
+      where: { id_espectador: id_usuario },
+      include: {
+        nivel: true,
+        streamer: {
+          select: {
+            id_usuario: true,
+            nombre: true,
+          },
+        },
+      },
+    });
 
-        const progreso = await prisma.progresoEspectador.findFirst({
-            where: { id_espectador: id_usuario }
-        });
-
-
-        if (!progreso) {
-            return resp.status(200).json({
-                puntos_actuales: 0,
-                mensaje: "El usuario no tiene progreso aún"
-            });
-        }
-
-
-        resp.status(200).json({
-            puntos_actuales: progreso.puntos_actuales
-        });
-
-
-    } catch (error) {
-        console.error(error);
-        resp.status(500).json({ error: "Error al obtener progreso" });
-    }
+    // Siempre devolvemos un array (vacío o con elementos)
+    resp.status(200).json(progresos);
+  } catch (error) {
+    console.error(error);
+    resp.status(500).json({ error: "Error al obtener progreso" });
+  }
 });
 
 
