@@ -1,4 +1,3 @@
-// ...existing code...
 import { useState } from "react";
 import { useNavigate, Link } from "react-router-dom";
 import { Button } from "@/components/ui/button";
@@ -6,7 +5,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Video, ArrowLeft } from "lucide-react";
 import { toast } from "sonner";
-import { BACKEND_URL } from "../config"
+import { BACKEND_URL } from "../config";
 
 const Register = () => {
   const [nombre, setNombre] = useState("");
@@ -23,42 +22,82 @@ const Register = () => {
     }
 
     try {
+      // 1) Crear usuario
       const resp = await fetch(`${BACKEND_URL}/usuarios/crear`, {
         method: "POST",
         headers: {
-          "Content-Type": "application/json"
+          "Content-Type": "application/json",
         },
         body: JSON.stringify({
           nombre,
           email,
           contra: password,
           rol: "ESPECTADOR",
-          estado: "ACTIVO"
-        })
+          estado: "ACTIVO",
+        }),
       });
 
-      if (resp.status === 200) {
-        const usuario = await resp.json();
-        
-        // Inicializar perfil de espectador
-        try {
-          await fetch(`${BACKEND_URL}/usuarios/${usuario.id_usuario}/inicializar-perfil`, {
+      const data = await resp.json();
+
+      if (!resp.ok) {
+        setError(data.error || "Error al registrarse");
+        return;
+      }
+
+      const usuarioCreado = data;
+
+      // 2) Loguear automáticamente al nuevo usuario para obtener token
+      const loginResp = await fetch(`${BACKEND_URL}/auth/login`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          correo: email,
+          contrasena: password,
+        }),
+      });
+
+      const loginData = await loginResp.json();
+
+      if (!loginResp.ok) {
+        // Si falla el login automático, al menos dejamos creado el usuario
+        toast.success("Usuario creado. Inicia sesión para continuar.");
+        setError("");
+        navigate("/login");
+        return;
+      }
+
+      const { token, usuario } = loginData;
+
+      if (!token || !usuario) {
+        toast.success("Usuario creado. Inicia sesión para continuar.");
+        setError("");
+        navigate("/login");
+        return;
+      }
+
+      // 3) Guardar authToken y usuario en localStorage
+      localStorage.setItem("authToken", token);
+      localStorage.setItem("usuario", JSON.stringify(usuario));
+
+      // 4) Inicializar perfil de espectador
+      try {
+        await fetch(
+          `${BACKEND_URL}/usuarios/${usuario.id_usuario}/inicializar-perfil`,
+          {
             method: "POST",
             headers: {
-              "Content-Type": "application/json"
-            }
-          });
-        } catch (perfil_error) {
-          console.error("Error al inicializar perfil:", perfil_error);
-        }
-        
-        toast.success("Usuario creado correctamente");
-        setError("");
-        setTimeout(() => navigate("/login"), 900);
-      } else {
-        const errorData = await resp.json();
-        setError(errorData.error || "Error al registrarse");
+              "Content-Type": "application/json",
+              Authorization: `Bearer ${token}`,
+            },
+          }
+        );
+      } catch (perfil_error) {
+        console.error("Error al inicializar perfil:", perfil_error);
       }
+
+      toast.success("Cuenta creada e iniciada sesión correctamente");
+      setError("");
+      navigate("/index");
     } catch (error) {
       setError("Error al conectar con el servidor");
       console.error(error);

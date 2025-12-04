@@ -1,40 +1,44 @@
-import { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { ArrowLeft, Coins } from "lucide-react";
 import BottomNav from "@/components/BottomNav";
-import React from 'react';
-import ComprobanteModal from '../components/ComprobanteModal';
-import PaymentModal from '../components/PaymentModal';
-import PackageModal from '../components/PackageModal';
-import { useSaldo } from '../contexts/SaldoContext';
+import ComprobanteModal from "../components/ComprobanteModal";
+import PaymentModal from "../components/PaymentModal";
+import PackageModal from "../components/PackageModal";
+import { useSaldo } from "../contexts/SaldoContext";
+import { BACKEND_URL } from "@/config";
 
-const regalosDisponibles = [
-  { id: 1, nombre: "Rosa", costo: 10, puntos: 100 },
-  { id: 2, nombre: "Diamante", costo: 50, puntos: 500 },
-];
+interface Transaccion {
+  fecha: string;
+  descripcion: string;
+  monto: string;
+  estado: string;
+}
 
 const Saldo = () => {
   const navigate = useNavigate();
-  const { saldo, setSaldo } = useSaldo();
-  const [puntos, setPuntos] = useState(0);
+  const { saldo, refrescarSaldo } = useSaldo();
+
   const [mensaje, setMensaje] = useState("");
-  const [trasccion, settransaccion] = useState([]);
+  const [trasccion, settransaccion] = useState<Transaccion[]>([]);
 
   const [isPackageModalOpen, setIsPackageModalOpen] = useState(false);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [rechargeAmount, setRechargeAmount] = useState(0);
-  const [rechargePrice, setRechargePrice] = useState(0); 
-  const [cardNumber, setCardNumber] = useState('');
-  const [expiryDate, setExpiryDate] = useState('');
-  const [cvc, setCvc] = useState('');
+  const [rechargePrice, setRechargePrice] = useState(0);
+  const [cardNumber, setCardNumber] = useState("");
+  const [expiryDate, setExpiryDate] = useState("");
+  const [cvc, setCvc] = useState("");
   const [isProcessing, setIsProcessing] = useState(false);
   const [isComprobanteOpen, setIsComprobanteOpen] = useState(false);
 
+  // Abrir selector de paquetes
   const handleOpenRechargeModal = () => {
     setIsPackageModalOpen(true);
   };
 
+  // Elegir paquete de monedas
   const handleSelectPackage = (monedas: number, precio: number) => {
     setRechargeAmount(monedas);
     setRechargePrice(precio);
@@ -44,11 +48,11 @@ const Saldo = () => {
   const handleCloseModal = () => {
     setIsModalOpen(false);
     setRechargeAmount(0);
-    setRechargePrice(0); // Resetea precio
-    setCardNumber('');
-    setExpiryDate('');
-    setCvc('');
-    setMensaje('');
+    setRechargePrice(0);
+    setCardNumber("");
+    setExpiryDate("");
+    setCvc("");
+    setMensaje("");
   };
 
   const handleClosePackageModal = () => {
@@ -59,46 +63,109 @@ const Saldo = () => {
     setIsComprobanteOpen(false);
   };
 
-  const handleSubmitPayment = (event: React.FormEvent) => {
+  // Enviar pago -> backend /recargas
+  const handleSubmitPayment = async (event: React.FormEvent) => {
     event.preventDefault();
-    if (rechargeAmount > 0 && cardNumber && expiryDate && cvc) {
+
+    if (!(rechargeAmount > 0 && cardNumber && expiryDate && cvc)) {
+      setMensaje("Por favor, completa todos los campos y un monto mayor a 0");
+      return;
+    }
+
+    try {
       setIsProcessing(true);
-      setMensaje('');
+      setMensaje("");
 
-      setTimeout(() => {
+      const rawUsuario = localStorage.getItem("usuario");
+      if (!rawUsuario) {
+        setMensaje("Debes iniciar sesión para recargar");
         setIsProcessing(false);
-        setSaldo(saldo + rechargeAmount);
-        setMensaje(`¡Recarga exitosa! Has agregado ${rechargeAmount} monedas.`);
+        return;
+      }
 
-        setIsModalOpen(false);
+      const resp = await fetch(`${BACKEND_URL}/recargas`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${localStorage.getItem("authToken") || ""}`,
+        },
+        body: JSON.stringify({
+          monedas_compradas: rechargeAmount,
+          monto_pagado: rechargePrice,
+          moneda: "PEN",
+          pasarela: "FAKE-PASARELA",
+        }),
+      });
 
-        setTimeout(() => setIsComprobanteOpen(true), 100);
+      if (!resp.ok) {
+        const errorData = await resp.json().catch(() => ({}));
+        throw new Error(errorData.error || "Error al procesar la recarga");
+      }
 
-        const nuevaTransaccion = {
-          fecha: new Date().toLocaleString(),
-          descripcion: `Recarga de ${rechargeAmount} monedas`,
-          monto: `${rechargeAmount}.00`,
-          estado: "Completado",
-        };
-        settransaccion([nuevaTransaccion, ...trasccion]);
-        setTimeout(() => setMensaje(""), 3000);
-      }, 2000);
-    } else {
-      setMensaje('Por favor, completa todos los campos y un monto mayor a 0');
+      const data = await resp.json();
+      // data.recarga, data.saldo_monedas_nuevo
+
+      // Actualizar saldo global desde backend
+      await refrescarSaldo();
+
+      setMensaje(
+        `¡Recarga exitosa! Has agregado ${data.recarga.monedas_compradas} monedas.`
+      );
+
+      // Agregar nueva transacción al historial
+      const nuevaTransaccion: Transaccion = {
+        fecha: new Date(data.recarga.fecha_hora).toLocaleString(),
+        descripcion: `Recarga de ${data.recarga.monedas_compradas} monedas`,
+        monto: `${data.recarga.monto_pagado.toFixed(2)} ${data.recarga.moneda}`,
+        estado: data.recarga.estado,
+      };
+      settransaccion((prev) => [nuevaTransaccion, ...prev]);
+
+      setIsModalOpen(false);
+      setTimeout(() => setIsComprobanteOpen(true), 100);
+      setTimeout(() => setMensaje(""), 3000);
+    } catch (error: any) {
+      setMensaje(error.message || "Error al procesar la recarga");
+    } finally {
+      setIsProcessing(false);
     }
   };
 
-  const handleEnviarRegalo = (regalo: typeof regalosDisponibles[0]) => {
-    if (saldo >= regalo.costo) {
-      setSaldo(saldo - regalo.costo);
-      setPuntos(puntos + regalo.puntos);
-      setMensaje(`¡Has enviado ${regalo.nombre} y apoyado al streamer!`);
-      setTimeout(() => setMensaje(""), 2000);
-    } else {
-      setMensaje("No tienes suficientes monedas.");
-      setTimeout(() => setMensaje(""), 2000);
-    }
-  };
+  // Cargar historial real desde GET /recargas/historial
+  useEffect(() => {
+    const cargarHistorial = async () => {
+      try {
+        const token = localStorage.getItem("authToken");
+        if (!token) return;
+
+        const resp = await fetch(`${BACKEND_URL}/recargas/historial`, {
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+        });
+
+        if (!resp.ok) {
+          console.warn("No se pudo obtener el historial de recargas");
+          return;
+        }
+
+        const data = await resp.json(); // array de RecargaMonedas
+
+        const mapeadas: Transaccion[] = data.map((r: any) => ({
+          fecha: new Date(r.fecha_hora).toLocaleString(),
+          descripcion: `Recarga de ${r.monedas_compradas} monedas`,
+          monto: `${r.monto_pagado.toFixed(2)} ${r.moneda}`,
+          estado: r.estado,
+        }));
+
+        settransaccion(mapeadas);
+      } catch (error) {
+        console.error("Error al cargar historial de recargas:", error);
+      }
+    };
+
+    cargarHistorial();
+  }, []);
 
   return (
     <div className="min-h-screen bg-background relative flex flex-col pb-20">
@@ -122,12 +189,12 @@ const Saldo = () => {
             <Coins className="w-6 h-6 text-yellow-400" /> Monedas
           </span>
           <Button variant="link" size="sm" onClick={handleOpenRechargeModal}>
-            Recargar Monto
+            Recargar monto
           </Button>
         </div>
         <div className="flex items-center justify-left gap-4">
           <span className="text-muted-foreground">Saldo</span>
-          <span className="text-2xl font-bold">{saldo} puntos</span> {/* Cambiado a puntos */}
+          <span className="text-2xl font-bold">{saldo} monedas</span>
         </div>
       </div>
 
@@ -137,17 +204,27 @@ const Saldo = () => {
         </div>
       )}
 
-      
+      {/* Historial de transacciones */}
       <div className="container mx-auto px-4">
         <div className="border-b-2 border-white pb-2 mb-4 flex items-center justify-between">
-          <h1 className="text-2xl font-bold text-pink-600">Historial de Transacciones</h1>
+          <h1 className="text-2xl font-bold text-pink-600">
+            Historial de Transacciones
+          </h1>
         </div>
         <div className="max-h-80 overflow-y-auto rounded-lg border border-gray-300">
-          <table className="table table-striped" border={1} style={{ width: "100%", textAlign: "left", borderCollapse: "collapse" }}>
+          <table
+            className="table table-striped"
+            border={1}
+            style={{
+              width: "100%",
+              textAlign: "left",
+              borderCollapse: "collapse",
+            }}
+          >
             <thead className="sticky top-0 bg-black text-pink-600 font-semibold">
               <tr>
                 <th className="p-2">Fecha</th>
-                <th className="p-2">Descripcion</th>
+                <th className="p-2">Descripción</th>
                 <th className="p-2">Monto</th>
                 <th className="p-2">Estado</th>
               </tr>
@@ -156,7 +233,7 @@ const Saldo = () => {
               {trasccion.length === 0 ? (
                 <tr>
                   <td colSpan={4} style={{ textAlign: "center" }}>
-                    Aun no se realizan transacciones
+                    Aún no se realizan transacciones
                   </td>
                 </tr>
               ) : (
@@ -164,7 +241,11 @@ const Saldo = () => {
                   <tr key={i}>
                     <td>{t.fecha}</td>
                     <td>{t.descripcion}</td>
-                    <td style={{ color: "green", fontWeight: "bold" }}>{t.monto}</td>
+                    <td
+                      style={{ color: "green", fontWeight: "bold" }}
+                    >
+                      {t.monto}
+                    </td>
                     <td>{t.estado}</td>
                   </tr>
                 ))
@@ -174,6 +255,7 @@ const Saldo = () => {
         </div>
       </div>
 
+      {/* Bloque monetización (placeholder) */}
       <div className="max-w-xl mx-auto mb-4 mt-4">
         <div className="bg-card rounded-xl p-4 mb-2 flex items-center justify-between">
           <span className="font-bold">Monetización</span>
@@ -190,13 +272,13 @@ const Saldo = () => {
         onSelectPackage={handleSelectPackage}
       />
 
-      
+      {/* Modal de Pago */}
       <PaymentModal
         isOpen={isModalOpen}
         onClose={handleCloseModal}
         onSubmit={handleSubmitPayment}
         rechargeAmount={rechargeAmount}
-        rechargePrice={rechargePrice} // Nuevo: pasa precio
+        rechargePrice={rechargePrice}
         cardNumber={cardNumber}
         setCardNumber={setCardNumber}
         expiryDate={expiryDate}
@@ -206,8 +288,12 @@ const Saldo = () => {
         isProcessing={isProcessing}
       />
 
-      {/* Modal de Comprobante usando el componente */}
-      <ComprobanteModal isOpen={isComprobanteOpen} onClose={handleCloseComprobante} amount={rechargeAmount} />
+      {/* Modal de Comprobante */}
+      <ComprobanteModal
+        isOpen={isComprobanteOpen}
+        onClose={handleCloseComprobante}
+        amount={rechargeAmount}
+      />
 
       {/* Barra inferior */}
       <div className="mt-auto">

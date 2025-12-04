@@ -24,7 +24,11 @@ export const SaldoProvider: React.FC<{ children: ReactNode }> = ({
   const refrescarSaldo = async () => {
     try {
       const rawUsuario = localStorage.getItem("usuario");
-      if (!rawUsuario) return;
+      if (!rawUsuario) {
+        // Si no hay usuario logueado, saldo 0
+        setSaldo(0);
+        return;
+      }
 
       const usuario = JSON.parse(rawUsuario) as { id_usuario: string };
 
@@ -53,8 +57,15 @@ export const SaldoProvider: React.FC<{ children: ReactNode }> = ({
   };
 
   useEffect(() => {
-    // Al montar la app (y haber hecho login antes), traemos el saldo real
+    // Al montar la app traemos el saldo real (si ya hay usuario guardado)
     refrescarSaldo();
+
+    // Opcional: escuchar cambios de localStorage por login/logout en otras tabs
+    const handler = () => {
+      refrescarSaldo();
+    };
+    window.addEventListener("storage", handler);
+    return () => window.removeEventListener("storage", handler);
   }, []);
 
   return (

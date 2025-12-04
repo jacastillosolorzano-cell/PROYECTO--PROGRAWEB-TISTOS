@@ -1,17 +1,16 @@
+// src/pages/StreamView.tsx
 import React, { useEffect, useRef, useState } from "react";
 import { useParams } from "react-router-dom";
 import io from "socket.io-client";
 import axios from "axios";
 import MenuRegalos from "@/components/MenuRegalos";
+import { BACKEND_URL } from "@/config";
 
-const BACKEND = import.meta.env.VITE_BACKEND_URL as string;
-
-// 🔌 Conexión de WebSockets usando la misma URL del backend
-const socket = io(BACKEND, {
+const socket = io(BACKEND_URL, {
   transports: ["websocket"],
 });
 
-const StreamView = () => {
+const StreamView: React.FC = () => {
   const { id_sesion } = useParams();
   const videoRef = useRef<HTMLVideoElement>(null);
   const pcRef = useRef<RTCPeerConnection | null>(null);
@@ -27,9 +26,8 @@ const StreamView = () => {
       if (!id_sesion) return;
 
       try {
-        // ✅ Ahora usamos GET /streams/:id_sesion
         const res = await axios.get<{ id_streamer: string }>(
-          `${BACKEND}/streams/${id_sesion}`
+          `${BACKEND_URL}/streams/${id_sesion}`
         );
 
         const id_streamer = res.data.id_streamer;
@@ -41,8 +39,13 @@ const StreamView = () => {
         } else {
           console.warn("⚠ La sesión no tiene streamer asociado");
         }
-      } catch (err) {
-        console.error("❌ Error cargando streamer:", err);
+      } catch (err: any) {
+        const status = err?.response?.status;
+        if (status === 404) {
+          alert("Esta transmisión ya no existe o fue finalizada.");
+        } else {
+          console.error("❌ Error cargando streamer:", err);
+        }
       }
     }
 

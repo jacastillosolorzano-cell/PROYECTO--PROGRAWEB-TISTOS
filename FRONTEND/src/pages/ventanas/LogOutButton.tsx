@@ -20,9 +20,6 @@ export default function MenuLogOut()
         setOpenLogOut(false)
     }
 
-
-
-
     return(
         <div className="flex flex-col">
             <Button

@@ -1,10 +1,7 @@
 import { useState, useRef, useEffect } from "react";
-import { BACKEND_URL } from '@/config';
-import { useUser } from '@/hooks/use-user';
 import { Heart, MessageCircle, Share2, Music2, Play } from "lucide-react";
-import { Button } from "./ui/button";
 import type { Video } from "./VideoFeed";
-import Gifts from "@/pages/ventanas/Gifts";
+import MenuRegalos from "@/components/MenuRegalos";
 import CommentSection from "@/pages/ventanas/ComentSection";
 
 interface VideoCardProps {
@@ -19,30 +16,38 @@ const VideoCard = ({ video, isActive }: VideoCardProps) => {
   const [isCommentModalOpen, setIsCommentModalOpen] = useState(false);
 
   useEffect(() => {
-    if (videoRef.current) {
-      if (isActive) {
-        videoRef.current.play();
-      } else {
-        videoRef.current.pause();
-        videoRef.current.currentTime = 0;
-      }
+    if (!videoRef.current) return;
+
+    if (isActive) {
+      videoRef.current
+        .play()
+        .catch((err) => console.warn("No se pudo reproducir el video:", err));
+    } else {
+      videoRef.current.pause();
+      videoRef.current.currentTime = 0;
     }
   }, [isActive]);
 
   const toggleLike = () => {
-    setIsLiked(!isLiked);
-    setLikes(isLiked ? likes - 1 : likes + 1);
+    setIsLiked((prev) => {
+      const next = !prev;
+      setLikes((prevLikes) =>
+        next ? prevLikes + 1 : Math.max(0, prevLikes - 1)
+      );
+      return next;
+    });
   };
 
-  // Inline component: muestra progreso del canal activo (puntos faltantes)
+  // Inline component: placeholder para progreso del canal
   const ChannelProgressInline = ({ streamerId }: { streamerId?: string }) => {
-        // Temporalmente deshabilitado para evitar dependencias del backend
-        return null;
-    };
+    // Más adelante puedes conectarlo a /usuarios/:id/progreso
+    if (!streamerId) return null;
+    return null;
+  };
 
   const formatNumber = (num: number) => {
-    if (num >= 1000000) return (num / 1000000).toFixed(1) + "M";
-    if (num >= 1000) return (num / 1000).toFixed(1) + "K";
+    if (num >= 1_000_000) return (num / 1_000_000).toFixed(1) + "M";
+    if (num >= 1_000) return (num / 1_000).toFixed(1) + "K";
     return num.toString();
   };
 
@@ -63,7 +68,7 @@ const VideoCard = ({ video, isActive }: VideoCardProps) => {
         <div className="absolute inset-0 gradient-overlay" />
       </div>
 
-      {/* Play/Pause Overlay */}
+      {/* Play/Pause Overlay (solo efecto visual) */}
       <button
         className="absolute inset-0 flex items-center justify-center z-10 group"
         tabIndex={-1}
@@ -76,15 +81,18 @@ const VideoCard = ({ video, isActive }: VideoCardProps) => {
 
       {/* Right Side Actions */}
       <div className="absolute right-4 bottom-24 z-30 flex flex-col gap-6">
-
         {/* Progreso del canal activo (inline) */}
         <div className="mb-2">
           <ChannelProgressInline streamerId={video.streamerId} />
         </div>
 
-        {/**Regalos */}
-        <Gifts/>
-        
+        {/* 🎁 Menú de regalos conectado al backend */}
+        {video.streamerId && (
+          <div className="mb-2">
+            <MenuRegalos streamerId={video.streamerId} />
+          </div>
+        )}
+
         {/* Profile */}
         <div className="flex flex-col items-center">
           <div className="relative">
@@ -106,7 +114,9 @@ const VideoCard = ({ video, isActive }: VideoCardProps) => {
         >
           <Heart
             className={`w-8 h-8 transition-all ${
-              isLiked ? "fill-primary text-primary animate-heart-pop" : "text-white"
+              isLiked
+                ? "fill-primary text-primary animate-heart-pop"
+                : "text-white"
             }`}
           />
           <span className="text-white text-xs font-semibold text-shadow">
@@ -115,12 +125,16 @@ const VideoCard = ({ video, isActive }: VideoCardProps) => {
         </button>
 
         {/* Comment */}
-       <button onClick={() => setIsCommentModalOpen(true)} className="flex flex-col items-center gap-1">
+        <button
+          onClick={() => setIsCommentModalOpen(true)}
+          className="flex flex-col items-center gap-1"
+        >
           <MessageCircle className="w-8 h-8 text-white" />
           <span className="text-white text-xs font-semibold text-shadow">
             {formatNumber(video.comments)}
           </span>
         </button>
+
         {/* Share */}
         <button className="flex flex-col items-center gap-1">
           <Share2 className="w-8 h-8 text-white" />
@@ -152,15 +166,18 @@ const VideoCard = ({ video, isActive }: VideoCardProps) => {
           </p>
         </div>
       </div>
+
+      {/* Modal comentarios (con sessionId como string) */}
       {isCommentModalOpen && (
-      <CommentSection sessionId={video.id} onClose={() => setIsCommentModalOpen(false)} />
-    )}
+        <CommentSection
+          sessionId={
+            typeof video.id === "string" ? video.id : String(video.id)
+          }
+          onClose={() => setIsCommentModalOpen(false)}
+        />
+      )}
     </div>
   );
 };
 
 export default VideoCard;
-
-
-
-

@@ -22,7 +22,7 @@ const ProgressBar: React.FC<ProgressBarProps> = ({ hoursDone, hoursRequired }) =
         }} />
       </div>
       <div style={{ textAlign: "center", marginTop: 10, color: "#ddd", fontSize: 14 }}>
-        {hoursDone} / {hoursRequired} horas ({percent}%)
+        {hoursDone} / {hoursRequired} {hoursRequired === 1 ? "hora" : "horas"} ({percent}%)
       </div>
     </div>
   );

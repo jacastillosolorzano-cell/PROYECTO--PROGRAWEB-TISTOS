@@ -4,7 +4,6 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Video } from "lucide-react";
-
 import { BACKEND_URL } from "../config";
 
 const Login = () => {
@@ -16,10 +15,8 @@ const Login = () => {
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
-    setError("");
 
     try {
-      // 🔐 Usar /auth/login (handler nuevo con JWT)
       const resp = await fetch(`${BACKEND_URL}/auth/login`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -29,7 +26,6 @@ const Login = () => {
         }),
       });
 
-      // 👀 Solo leemos json UNA vez
       const data = await resp.json();
 
       if (!resp.ok) {
@@ -37,36 +33,49 @@ const Login = () => {
         return;
       }
 
-      // data debe ser: { id_usuario, nombre, email, rol, token, ... }
-      const { token, ...usuario } = data;
+      // 👇 El backend debe devolver algo como:
+      // { token: "...", usuario: { id_usuario, email, rol, ... } }
+      const { token, usuario } = data;
 
-      // Guardar token y usuario por separado
-      if (token) {
-        localStorage.setItem("authToken", token);
+      if (!token || !usuario) {
+        setError("Respuesta de login inválida del servidor");
+        return;
       }
+
+      // ✅ Guardar token de auth para usarlo en /regalos, /notificaciones, etc.
+      localStorage.setItem("authToken", token);
+
+      // ✅ Guardar usuario completo (ya sin password) para usarlo en toda la app
       localStorage.setItem("usuario", JSON.stringify(usuario));
 
-      // Inicializar perfil de espectador (no requiere auth, pero podríamos mandarla)
+      // Inicializar perfil de espectador en backend
       try {
         await fetch(
           `${BACKEND_URL}/usuarios/${usuario.id_usuario}/inicializar-perfil`,
           {
             method: "POST",
-            headers: { "Content-Type": "application/json" },
+            headers: {
+              "Content-Type": "application/json",
+              // Si más adelante protegemos esta ruta, ya tienes el token
+              Authorization: `Bearer ${token}`,
+            },
           }
         );
       } catch (perfil_error) {
         console.error("Error al inicializar perfil:", perfil_error);
       }
 
-      // Redirigir según rol
-      if (usuario.rol === "STREAMER") {
-        navigate("/studio");
-      } else {
-        navigate("/index");
+      // (Opcional) log de rol
+      if (usuario.rol !== "STREAMER") {
+        console.warn(
+          "El usuario no es streamer. Solo podrá ver transmisiones."
+        );
       }
-    } catch (err) {
-      console.error(err);
+
+      setError("");
+      navigate("/index");
+    } catch (error) {
+      console.error(error);
       setError("Error al conectar con el servidor");
     }
   };

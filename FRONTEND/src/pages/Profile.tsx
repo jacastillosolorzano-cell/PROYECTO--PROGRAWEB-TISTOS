@@ -1,35 +1,56 @@
+// src/pages/Profile.tsx
 import { useState, useEffect } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
-import { ArrowLeft, Menu, LogOut, Wallet, UserPlus, ArrowRight, Star, Gem, Zap } from "lucide-react"; // NUEVO: Agregué icons para nivel/puntos
+import {
+  ArrowLeft,
+  Menu,
+  Wallet,
+  UserPlus,
+  ArrowRight,
+  Star,
+  Gem,
+  Zap,
+} from "lucide-react";
 import BottomNav from "@/components/BottomNav";
-import { useUser } from "../hooks/use-user"; // NUEVO: Import del hook
-import { useToast } from "../hooks/use-toast"; // NUEVO: Import para notificaciones
-import { formatPoints } from "../lib/utils"; // NUEVO: Para formatear puntos (de Paso 1)
-import { BACKEND_URL } from '@/config';
+import { useUser } from "../hooks/use-user";
+import { useToast } from "../hooks/use-toast";
+import { formatPoints } from "../lib/utils";
+import { BACKEND_URL } from "@/config";
+import LogOutButton from "@/pages/ventanas/LogOutButton";
+import HeaderSaldo from "@/components/HeaderSaldo";
 
-// Muestra el progreso por canal usando el endpoint de backend
+// ===============================
+//  Progreso por canal (desde backend)
+// ===============================
 function ChannelProgress({ userId }: { userId?: string | null }) {
   const [progresos, setProgresos] = useState<any[]>([]);
 
   useEffect(() => {
     if (!userId) return;
     let mounted = true;
+
     (async () => {
       try {
         const res = await fetch(`${BACKEND_URL}/usuarios/${userId}/progreso`);
         if (!res.ok) {
-          console.warn('No se pudo obtener progreso desde backend', await res.text());
+          console.warn(
+            "No se pudo obtener progreso desde backend",
+            await res.text()
+          );
           return;
         }
         const data = await res.json();
         if (!mounted) return;
         setProgresos(data || []);
       } catch (e) {
-        console.error('Error al obtener progreso:', e);
+        console.error("Error al obtener progreso:", e);
       }
     })();
-    return () => { mounted = false; };
+
+    return () => {
+      mounted = false;
+    };
   }, [userId]);
 
   if (!progresos || progresos.length === 0) return null;
@@ -44,17 +65,32 @@ function ChannelProgress({ userId }: { userId?: string | null }) {
           const puntos_actuales = p.puntos_actuales || 0;
           const puntos_requeridos = nivel?.puntos_requeridos ?? 1000;
           const faltan = Math.max(puntos_requeridos - puntos_actuales, 0);
-          const porcentaje = Math.min(Math.round((puntos_actuales / puntos_requeridos) * 100), 100);
+          const porcentaje = Math.min(
+            Math.round((puntos_actuales / puntos_requeridos) * 100),
+            100
+          );
           return (
             <div key={p.id_progreso} className="bg-muted p-3 rounded">
               <div className="flex justify-between text-xs mb-1">
-                <div className="font-medium">{streamer?.nombre || streamer?.id_usuario || 'Streamer'}</div>
-                <div className="text-muted-foreground">{puntos_actuales} / {puntos_requeridos}</div>
+                <div className="font-medium">
+                  {streamer?.nombre ||
+                    streamer?.id_usuario ||
+                    "Streamer"}
+                </div>
+                <div className="text-muted-foreground">
+                  {puntos_actuales} / {puntos_requeridos}
+                </div>
               </div>
               <div className="w-full bg-black/10 rounded-full h-2 mb-1">
-                <div className="bg-gradient-to-r from-green-400 to-blue-500 h-2 rounded-full" style={{ width: `${porcentaje}%` }} />
+                <div
+                  className="bg-gradient-to-r from-green-400 to-blue-500 h-2 rounded-full"
+                  style={{ width: `${porcentaje}%` }}
+                />
               </div>
-              <div className="text-xs text-muted-foreground">Faltan {faltan} puntos para "{nivel?.nombre_nivel || 'siguiente nivel'}"</div>
+              <div className="text-xs text-muted-foreground">
+                Faltan {faltan} puntos para "
+                {nivel?.nombre_nivel || "siguiente nivel"}"
+              </div>
             </div>
           );
         })}
@@ -62,28 +98,42 @@ function ChannelProgress({ userId }: { userId?: string | null }) {
     </div>
   );
 }
-import LogOutButton from "@/pages/ventanas/LogOutButton";
-import HeaderSaldo from "@/components/HeaderSaldo";
 
+// ===============================
+//  Página de Perfil
+// ===============================
 const Profile = () => {
   const navigate = useNavigate();
   const [showMenu, setShowMenu] = useState(false);
 
-  
-  const { user, updatePoints } = useUser();
-  const { toast } = useToast(); 
+  const { user } = useUser();
+  const { toast } = useToast();
 
-  
-  const usuario = {
-    nombre: "ulima123",
-    avatar: "https://is1-ssl.mzstatic.com/image/thumb/Purple211/v4/af/ba/26/afba2629-ac1e-01c3-dce7-293a45a2bc48/AppIcon-0-1x_U007epad-0-1-0-85-220-0.png/230x0w.webp", // ...existing avatar...
+  // Usuario real del backend (guardado en login)
+  const rawBackendUser = localStorage.getItem("usuario");
+  const backendUser = rawBackendUser
+    ? (JSON.parse(rawBackendUser) as {
+        id_usuario: string;
+        nombre: string;
+        email: string;
+        rol: string;
+      })
+    : null;
+
+  // Mock de estadísticas sociales (no están en backend, los dejamos fake)
+  const usuarioMock = {
+    avatar:
+      "https://is1-ssl.mzstatic.com/image/thumb/Purple211/v4/af/ba/26/afba2629-ac1e-01c3-dce7-293a45a2bc48/AppIcon-0-1x_U007epad-0-1-0-85-220-0.png/230x0w.webp",
     seguidores: 999,
     seguidos: 999,
     meGusta: 999,
   };
 
-  // === Nueva lógica para descripción ===
-  const storageKey = `profile_description_${user?.name ?? usuario.nombre}`;
+  const displayName =
+    backendUser?.nombre ?? user?.name ?? "ulima123";
+
+  // === Descripción guardada en localStorage (frontend only) ===
+  const storageKey = `profile_description_${displayName}`;
   const [description, setDescription] = useState<string>("");
   const [editing, setEditing] = useState<boolean>(false);
   const [draft, setDraft] = useState<string>("");
@@ -105,7 +155,9 @@ const Profile = () => {
     setEditing(false);
     toast({
       title: "Descripción guardada",
-      description: trimmed ? "Tu descripción se actualizó correctamente." : "Descripción eliminada.",
+      description: trimmed
+        ? "Tu descripción se actualizó correctamente."
+        : "Descripción eliminada.",
       duration: 2500,
     });
   };
@@ -114,24 +166,75 @@ const Profile = () => {
     setDraft("");
     setEditing(false);
   };
-  // === Fin lógica descripción ===
 
-  // NUEVO: Función para ganar puntos (integra con toast para level up)
-  const handleGainPoints = () => {
-    const result = updatePoints?.("login"); // Ejemplo: gana 100 puntos por "actualizar perfil"
-    toast({
-      title: "¡Progreso Actualizado!",
-      description: `Ganaste 100 puntos. Total: ${formatPoints((user?.points ?? 0) + 100)} 💎`,
-      duration: 3000,
-    });
-    if (result?.didLevelUp) {
-      toast({
-        title: "¡Felicidades! 🎉",
-        description: `Has subido al Nivel ${result.newLevel}! Sigue participando para más recompensas.`,
-        duration: 4000,
-      });
-    }
-  };
+  // === Progreso general (resumen) desde backend ===
+  interface ResumenProgreso {
+    puntos: number;
+    puntosRequeridos: number;
+    nivelNombre: string;
+    streamerNombre?: string;
+  }
+
+  const [resumen, setResumen] = useState<ResumenProgreso | null>(null);
+  const [cargandoProgreso, setCargandoProgreso] = useState(false);
+
+  useEffect(() => {
+    const cargarProgreso = async () => {
+      if (!backendUser?.id_usuario) return;
+      try {
+        setCargandoProgreso(true);
+        const resp = await fetch(
+          `${BACKEND_URL}/usuarios/${backendUser.id_usuario}/progreso`
+        );
+        if (!resp.ok) {
+          console.warn("No se pudo cargar progreso general");
+          return;
+        }
+        const progresos: any[] = await resp.json();
+
+        if (!progresos || progresos.length === 0) {
+          setResumen(null);
+          return;
+        }
+
+        // Tomamos el progreso donde tenga más puntos como “principal”
+        const best = progresos.reduce((prev, curr) =>
+          (curr.puntos_actuales || 0) > (prev.puntos_actuales || 0)
+            ? curr
+            : prev
+        );
+
+        const puntos = best.puntos_actuales || 0;
+        const puntosRequeridos =
+          best.nivel?.puntos_requeridos ?? 1000;
+        const nivelNombre =
+          best.nivel?.nombre_nivel ?? "Nuevo";
+        const streamerNombre =
+          best.streamer?.nombre || best.streamer?.id_usuario;
+
+        setResumen({
+          puntos,
+          puntosRequeridos,
+          nivelNombre,
+          streamerNombre,
+        });
+      } catch (e) {
+        console.error("Error cargando progreso general:", e);
+      } finally {
+        setCargandoProgreso(false);
+      }
+    };
+
+    cargarProgreso();
+  }, [backendUser?.id_usuario]);
+
+  const puntos = resumen?.puntos ?? 0;
+  const puntosRequeridos = resumen?.puntosRequeridos ?? 1000;
+  const faltan = Math.max(puntosRequeridos - puntos, 0);
+  const porcentaje = Math.min(
+    Math.round((puntos / puntosRequeridos) * 100),
+    100
+  );
 
   return (
     <div className="min-h-screen bg-background relative flex flex-col">
@@ -146,6 +249,7 @@ const Profile = () => {
       </Button>
 
       <HeaderSaldo />
+
       {/* Botón de menú */}
       <Button
         variant="ghost"
@@ -170,8 +274,9 @@ const Profile = () => {
             <Wallet className="w-5 h-5 mr-2" />
             Ver saldo
           </Button>
-          {/*Cerrar sesion */}
-          <LogOutButton/>
+
+          {/* Cerrar sesión */}
+          <LogOutButton />
 
           <Button
             variant="ghost"
@@ -189,7 +294,7 @@ const Profile = () => {
         {/* Imagen de perfil */}
         <div className="relative">
           <img
-            src={usuario.avatar}
+            src={usuarioMock.avatar}
             alt="avatar"
             className="w-24 h-24 rounded-full border-4 border-white shadow-lg"
           />
@@ -203,7 +308,14 @@ const Profile = () => {
           </Button>
         </div>
         {/* Nombre de usuario */}
-        <div className="mt-2 text-lg font-semibold">@{usuario.nombre}</div>
+        <div className="mt-2 text-lg font-semibold">
+          @{displayName}
+        </div>
+        {backendUser?.email && (
+          <div className="text-xs text-muted-foreground">
+            {backendUser.email}
+          </div>
+        )}
 
         {/* Descripción (si existe) */}
         {description ? (
@@ -220,69 +332,85 @@ const Profile = () => {
         </div>
       </div>
 
-      {/* Estadísticas existentes */}
+      {/* Estadísticas sociales (mock) */}
       <div className="flex justify-center gap-8 mb-4">
         <div className="flex flex-col items-center">
-          <span className="font-bold">{usuario.seguidos}</span>
-          <span className="text-xs text-muted-foreground">Siguiendo</span>
+          <span className="font-bold">{usuarioMock.seguidos}</span>
+          <span className="text-xs text-muted-foreground">
+            Siguiendo
+          </span>
         </div>
         <div className="flex flex-col items-center">
-          <span className="font-bold">{usuario.seguidores}</span>
-          <span className="text-xs text-muted-foreground">Seguidores</span>
+          <span className="font-bold">{usuarioMock.seguidores}</span>
+          <span className="text-xs text-muted-foreground">
+            Seguidores
+          </span>
         </div>
         <div className="flex flex-col items-center">
-          <span className="font-bold">{usuario.meGusta}</span>
-          <span className="text-xs text-muted-foreground">Me gusta</span>
+          <span className="font-bold">{usuarioMock.meGusta}</span>
+          <span className="text-xs text-muted-foreground">
+            Me gusta
+          </span>
         </div>
       </div>
 
-      
+      {/* Mi Progreso (desde backend) */}
       <div className="mx-4 mb-4 bg-card rounded-lg p-4 shadow-sm border">
         <h3 className="text-lg font-semibold mb-3 flex items-center gap-2">
           <Zap className="w-5 h-5 text-yellow-500" />
           Mi Progreso
         </h3>
-        <div className="space-y-2 text-sm">
-          <p className="flex items-center gap-2">
-            <strong>Nombre:</strong> {user?.name ?? usuario.nombre} 
-          </p>
-          <p className="flex items-center gap-2">
-            <Star className="w-4 h-4 text-yellow-500" />
-            <strong>Nivel:</strong> {user?.level ?? 1}
-          </p>
-          <p className="flex items-center gap-2">
-            <Gem className="w-4 h-4 text-green-500" />
-            <strong>Puntos:</strong> {formatPoints(user?.points ?? 0)}
-          </p>
-          
-          <div className="space-y-1">
-            <div className="flex justify-between text-xs">
-              <span>Progreso al siguiente nivel</span>
-              <span>{(user?.points ?? 0) % 1000} / 1000</span> 
-            </div>
-            <div className="w-full bg-muted rounded-full h-2">
-              <div 
-                className="bg-gradient-to-r from-green-400 to-blue-500 h-2 rounded-full transition-all duration-300" 
-                style={{ width: `${Math.min(((user?.points ?? 0) % 1000) / 10, 100)}%` }} 
-              />
-            </div>
-            <p className="text-xs text-muted-foreground">
-              Próximo nivel en {1000 - ((user?.points ?? 0) % 1000)} puntos.
-            </p>
-          </div>
-        </div>
 
-        {/* Progreso por canal (desde backend) */}
-        <ChannelProgress userId={user?.id} />
-        
-        <Button 
-          onClick={handleGainPoints}
-          className="w-full mt-3 flex items-center gap-2"
-          variant="default"
-        >
-          <Zap className="w-4 h-4" />
-          Actualizar Progreso (Gana 100 pts)
-        </Button>
+        {cargandoProgreso ? (
+          <p className="text-sm text-muted-foreground">
+            Cargando progreso...
+          </p>
+        ) : resumen ? (
+          <div className="space-y-2 text-sm">
+            <p className="flex items-center gap-2">
+              <strong>Nombre:</strong> {displayName}
+            </p>
+            {resumen.streamerNombre && (
+              <p className="flex items-center gap-2 text-xs text-muted-foreground">
+                Principal en canal: {resumen.streamerNombre}
+              </p>
+            )}
+            <p className="flex items-center gap-2">
+              <Star className="w-4 h-4 text-yellow-500" />
+              <strong>Nivel:</strong> {resumen.nivelNombre}
+            </p>
+            <p className="flex items-center gap-2">
+              <Gem className="w-4 h-4 text-green-500" />
+              <strong>Puntos:</strong> {formatPoints(puntos)}
+            </p>
+
+            <div className="space-y-1">
+              <div className="flex justify-between text-xs">
+                <span>Progreso al siguiente nivel</span>
+                <span>
+                  {puntos} / {puntosRequeridos}
+                </span>
+              </div>
+              <div className="w-full bg-muted rounded-full h-2">
+                <div
+                  className="bg-gradient-to-r from-green-400 to-blue-500 h-2 rounded-full transition-all duration-300"
+                  style={{ width: `${porcentaje}%` }}
+                />
+              </div>
+              <p className="text-xs text-muted-foreground">
+                Próximo nivel en {faltan} puntos.
+              </p>
+            </div>
+          </div>
+        ) : (
+          <p className="text-sm text-muted-foreground">
+            Aún no tienes puntos. Participa en chats, envía regalos o
+            juega a la ruleta para empezar a subir de nivel.
+          </p>
+        )}
+
+        {/* Progreso por canal (detalle) */}
+        <ChannelProgress userId={backendUser?.id_usuario} />
       </div>
 
       {/* Link a Tistos Studio */}
@@ -300,9 +428,14 @@ const Profile = () => {
       {/* Modal editor de descripción */}
       {editing && (
         <div className="fixed inset-0 z-50 flex items-center justify-center">
-          <div className="absolute inset-0 bg-black/60" onClick={cancelEdit} />
+          <div
+            className="absolute inset-0 bg-black/60"
+            onClick={cancelEdit}
+          />
           <div className="relative bg-[#151515] p-6 rounded-lg shadow-xl w-[min(720px,92%)] border border-purple-800">
-            <h3 className="text-lg font-bold mb-3">Editar descripción</h3>
+            <h3 className="text-lg font-bold mb-3">
+              Editar descripción
+            </h3>
             <textarea
               value={draft}
               onChange={(e) => setDraft(e.target.value)}
@@ -312,7 +445,9 @@ const Profile = () => {
               maxLength={300}
             />
             <div className="mt-4 flex justify-end gap-2">
-              <Button variant="ghost" onClick={cancelEdit}>Cancelar</Button>
+              <Button variant="ghost" onClick={cancelEdit}>
+                Cancelar
+              </Button>
               <Button onClick={saveDescription}>Guardar</Button>
             </div>
           </div>

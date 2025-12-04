@@ -1,17 +1,28 @@
 import { Home, Search, PlusSquare, MessageSquare, User } from "lucide-react";
-import { useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useLocation } from "react-router-dom";
 
 const BottomNav = () => {
-  const [activeTab, setActiveTab] = useState("home");
   const navigate = useNavigate();
+  const location = useLocation();
+
   const navItems = [
-    { id: "home", icon: Home, label: "Home", route: "/index" },
-    { id: "discover", icon: Search, label: "Discover", route: "/discover" },
-    { id: "create", icon: PlusSquare, label: "Create", route: "/Create" },
-    { id: "inbox", icon: MessageSquare, label: "Inbox", route: "/inbox" },
-    { id: "profile", icon: User, label: "Profile", route: "/profile" },
+    { id: "home",     icon: Home,        label: "Home",    route: "/index" },
+    { id: "discover", icon: Search,      label: "Discover", route: "/discover" },
+    // 👇 importante: ruta en minúsculas
+    { id: "create",   icon: PlusSquare,  label: "Create",  route: "/create" },
+    { id: "inbox",    icon: MessageSquare, label: "Inbox", route: "/inbox" },
+    { id: "profile",  icon: User,        label: "Profile", route: "/profile" },
   ];
+
+  // Determinar tab activa según la URL
+  const getActiveTab = () => {
+    const current = navItems.find((item) =>
+      location.pathname.startsWith(item.route)
+    );
+    return current?.id ?? "home";
+  };
+
+  const activeTab = getActiveTab();
 
   return (
     <nav className="fixed bottom-0 left-0 right-0 z-50 bg-background border-t border-border">
@@ -24,10 +35,7 @@ const BottomNav = () => {
           return (
             <button
               key={item.id}
-              onClick={() => {
-                setActiveTab(item.id);
-                navigate(item.route); // Navega a la ruta correspondiente
-              }}
+              onClick={() => navigate(item.route)}
               className="flex flex-col items-center justify-center gap-1 flex-1 transition-colors"
             >
               {isCreate ? (

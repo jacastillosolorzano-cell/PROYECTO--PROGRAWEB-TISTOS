@@ -3,8 +3,6 @@ import { Button } from "@/components/ui/button";
 import { ArrowLeft, Bell, Users } from "lucide-react";
 import BottomNav from "@/components/BottomNav";
 import { useNavigate } from "react-router-dom";
-import { useUser } from "../hooks/use-user";
-import { useToast } from "../hooks/use-toast";
 import SearchBar from "../components/SearchBar";
 import ChatList from "../components/ChatList";
 import HeaderSaldo from "../components/HeaderSaldo";
@@ -52,10 +50,7 @@ const chats: ChatItem[] = [
 
 const Inbox: React.FC = () => {
   const navigate = useNavigate();
-  const { user: currentUser } = useUser();
-  const { toast } = useToast();
 
-  const [openChatId, setOpenChatId] = useState<number | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
   const [searchOpen, setSearchOpen] = useState(false);
 
@@ -78,7 +73,6 @@ const Inbox: React.FC = () => {
   );
 
   const handleChatClick = (chat: ChatItem) => {
-    setOpenChatId(chat.id);
     navigate(`/chat/${chat.id}`, { state: { chat } });
   };
 

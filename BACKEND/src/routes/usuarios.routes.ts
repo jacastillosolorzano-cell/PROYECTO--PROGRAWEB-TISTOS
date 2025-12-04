@@ -44,6 +44,38 @@ router.post("/crear", async (req: Request, resp: Response) => {
   }
 });
 
+router.get(
+  "/:id_usuario/perfil-streamer",
+  async (req, resp: Response) => {
+    try {
+      const { id_usuario } = req.params;
+
+      const perfil = await prisma.perfilStreamer.findUnique({
+        where: { id_usuario },
+        include: { nivel: true },
+      });
+
+      if (!perfil) {
+        // Si aún no tiene perfil de streamer, devolvemos valores por defecto
+        return resp.status(200).json({
+          horas_transmitidas_total: 0,
+          nivel: null,
+        });
+      }
+
+      return resp.status(200).json({
+        horas_transmitidas_total: perfil.horas_transmitidas_total,
+        nivel: perfil.nivel, // { nombre_nivel, orden, horas_requeridas, ... }
+      });
+    } catch (error) {
+      console.error("Error al obtener perfil streamer:", error);
+      return resp
+        .status(500)
+        .json({ error: "Error al obtener perfil de streamer" });
+    }
+  }
+);
+
 // Obtener usuario por id
 router.get("/:id_usuario", async (req: Request, resp: Response) => {
   try {

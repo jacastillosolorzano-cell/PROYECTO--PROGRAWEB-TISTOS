@@ -11,14 +11,14 @@ const Index = () => {
     // Proteger la ruta: si no hay usuario en localStorage, mandar a login
     const rawUsuario = localStorage.getItem("usuario");
     if (!rawUsuario) {
-      navigate("/login");
+      navigate("/login", { replace: true }); // 👈 evita que vuelva con "atrás"
       return;
     }
 
     // Si quisieras, acá podrías validar rol (por ejemplo, bloquear STREAMER):
     // const usuario = JSON.parse(rawUsuario);
     // if (usuario.rol === "STREAMER") {
-    //   navigate("/studio");
+    //   navigate("/studio", { replace: true });
     // }
   }, [navigate]);
 

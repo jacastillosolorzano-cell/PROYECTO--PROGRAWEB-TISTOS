@@ -132,13 +132,12 @@ const ChatView: React.FC = () => {
     //    Si no es así, igual podrías usar otra ruta dedicada a puntos.
     try {
       const resp = await fetch(
-        `${BACKEND_URL}/sesiones/${chatId}/mensajes`,
+        `${BACKEND_URL}/usuarios/${usuario.id_usuario}/mensaje`,
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            id_espectador: usuario.id_usuario,
-            contenido,
+            id_streamer: null, // o más adelante el streamer real
           }),
         }
       );
@@ -186,14 +185,15 @@ const ChatView: React.FC = () => {
   // ============================
   //  Resultado de ruleta
   // ============================
-  const handleRouletteResult = () => {
-    const usuario = getCurrentUser();
-    if (!usuario) {
-      toast?.({ title: "Inicia sesión para jugar", duration: 2000 });
-      return;
-    }
+  const handleRoulettePlay = async () => {
+  const usuario = getCurrentUser();
+  if (!usuario) {
+    toast?.({ title: "Inicia sesión para jugar", duration: 2000 });
+    throw new Error("Inicia sesión para jugar");
+  }
 
-    fetch(`${BACKEND_URL}/ruleta/jugar`, {
+  try {
+    const res = await fetch(`${BACKEND_URL}/ruleta/jugar`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -201,73 +201,79 @@ const ChatView: React.FC = () => {
         puntos_apostados: ROULETTE_COST,
         id_streamer: chat?.id || null,
       }),
-    })
-      .then(async (res) => {
-        const data = await res.json().catch(() => ({}));
-        if (!res.ok) {
-          throw new Error(
-            data.error ||
-              "Error al procesar la ruleta (¿tienes suficientes puntos?)"
-          );
-        }
+    });
 
-        // data: { monedas_ganadas, saldo_monedas_nuevo, puntos_actuales, resultado_segmento, ... }
+    const data = await res.json().catch(() => ({} as any));
 
-        // Actualizar puntos con lo que responde el backend
-        if (typeof data.puntos_actuales === "number") {
-          setUserPoints(data.puntos_actuales);
+    if (!res.ok) {
+      const msg =
+        data.error ||
+        "Error al procesar la ruleta (¿tienes suficientes puntos?)";
+      toast?.({ title: msg, duration: 2000 });
+      throw new Error(msg);
+    }
+
+    // Actualizar puntos del usuario (puntos_actuales)
+    if (typeof data.puntos_actuales === "number") {
+      setUserPoints(data.puntos_actuales);
+    } else {
+      // fallback: recargar progreso completo
+      const respProg = await fetch(
+        `${BACKEND_URL}/usuarios/${usuario.id_usuario}/progreso`
+      );
+      if (respProg.ok) {
+        const progresos: any[] = await respProg.json();
+        if (chat?.id) {
+          const prog = progresos.find((p) => p.id_streamer === chat.id);
+          setUserPoints(prog?.puntos_actuales ?? 0);
         } else {
-          // fallback: recargar progreso completo
-          const respProg = await fetch(
-            `${BACKEND_URL}/usuarios/${usuario.id_usuario}/progreso`
+          const total = progresos.reduce(
+            (acc, p) => acc + (p.puntos_actuales ?? 0),
+            0
           );
-          if (respProg.ok) {
-            const progresos: any[] = await respProg.json();
-            if (chat?.id) {
-              const prog = progresos.find(
-                (p) => p.id_streamer === chat.id
-              );
-              setUserPoints(prog?.puntos_actuales ?? 0);
-            } else {
-              const total = progresos.reduce(
-                (acc, p) => acc + (p.puntos_actuales ?? 0),
-                0
-              );
-              setUserPoints(total);
-            }
-          }
+          setUserPoints(total);
         }
+      }
+    }
 
-        // Actualizar saldo global (monedas)
-        refrescarSaldo();
+    // Actualizar saldo global (monedas)
+    await refrescarSaldo();
 
-        // Overlay animado
-        window.dispatchEvent(
-          new CustomEvent("tistos:overlay", {
-            detail: {
-              type: "gift",
-              from: usuario.nombre ?? usuario.email ?? "Anon",
-              giftName: `Ruleta (+${data.monedas_ganadas} monedas)`,
-              points: data.monedas_ganadas,
-              multiplier: 0,
-            },
-          })
-        );
-
-        toast?.({
-          title: `¡Ganaste ${data.monedas_ganadas} monedas!`,
-          description: `Resultado: ${data.resultado_segmento}`,
-          duration: 2000,
-        });
+    // Overlay animado
+    window.dispatchEvent(
+      new CustomEvent("tistos:overlay", {
+        detail: {
+          type: "gift",
+          from: usuario.nombre ?? usuario.email ?? "Anon",
+          giftName: `Ruleta (+${data.monedas_ganadas} monedas)`,
+          points: data.monedas_ganadas,
+          multiplier: 0,
+        },
       })
-      .catch((error: any) => {
-        toast?.({
-          title: error.message || "Error al procesar la ruleta",
-          duration: 2000,
-        });
-        console.error(error);
-      });
-  };
+    );
+
+    // Toast de éxito
+    toast?.({
+      title: `¡Ganaste ${data.monedas_ganadas} monedas!`,
+      description: `Resultado: ${data.resultado_segmento}`,
+      duration: 2000,
+    });
+
+    // 👉 Esto es lo que usará la ruleta visual
+    return {
+      resultado_segmento: data.resultado_segmento as string,
+      monedas_ganadas: data.monedas_ganadas as number,
+    };
+  } catch (error: any) {
+    console.error(error);
+    const msg =
+      error?.message || "Error al procesar la ruleta. Inténtalo de nuevo.";
+    toast?.({ title: msg, duration: 2000 });
+    // re-lanzamos para que RouletteModal muestre error en su panel de "Resultado"
+    throw new Error(msg);
+  }
+};
+
 
   // ============================
   //  Render
@@ -413,11 +419,9 @@ const ChatView: React.FC = () => {
         costPoints={ROULETTE_COST}
         userPoints={userPoints}
         onClose={() => setRouletteOpen(false)}
-        onResult={() => {
-          setRouletteOpen(false);
-          handleRouletteResult();
-        }}
+        onPlay={handleRoulettePlay}
       />
+
     </div>
   );
 };

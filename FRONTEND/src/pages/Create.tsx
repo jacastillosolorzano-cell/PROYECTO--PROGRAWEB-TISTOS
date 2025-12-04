@@ -1,14 +1,14 @@
+// src/pages/Create.tsx
 import { useState, useEffect, useRef } from "react";
 import { Button } from "@/components/ui/button";
-import {
-  Music2,
-  X
-} from "lucide-react";
+import { Music2, X } from "lucide-react";
 import BottomNav from "@/components/BottomNav";
 import { useNavigate } from "react-router-dom";
 import io from "socket.io-client";
+import { BACKEND_URL } from "@/config";
 
-const socket = io(import.meta.env.VITE_BACKEND_URL, {
+// 🔌 Usa siempre la misma URL del backend
+const socket = io(BACKEND_URL, {
   transports: ["websocket"],
 });
 
@@ -21,7 +21,7 @@ const Create = () => {
   const peersRef = useRef<{ [key: string]: RTCPeerConnection }>({});
   const streamRef = useRef<MediaStream | null>(null);
 
-  // =============== SOCKET LISTENERS (STREAMER) ===============
+  // =============== LISTENERS SOCKET (STREAMER) ===============
   useEffect(() => {
     socket.on("connect", () => console.log("Socket streamer:", socket.id));
 
@@ -39,77 +39,99 @@ const Create = () => {
         await pc.addIceCandidate(data.candidate);
       }
     });
+
+    return () => {
+      socket.off("connect");
+      socket.off("stream-answer");
+      socket.off("ice-candidate");
+    };
   }, []);
 
   // =============================================================
   //                    INICIAR STREAMING
   // =============================================================
   const startStream = async () => {
-    const usuario = JSON.parse(localStorage.getItem("usuario") || "{}");
+    const rawUsuario = localStorage.getItem("usuario");
+    const token = localStorage.getItem("authToken");
 
-    if (!usuario.id_usuario) {
-      alert("Debes iniciar sesión");
+    if (!rawUsuario || !token) {
+      alert("Debes iniciar sesión para iniciar un stream");
       return;
     }
 
-    // Crear sesión en backend
-    const res = await fetch(`${import.meta.env.VITE_BACKEND_URL}/streams/crear`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        id_streamer: usuario.id_usuario,
-        titulo: "Mi Stream",
-      }),
-    });
+    const usuario = JSON.parse(rawUsuario) as { id_usuario: string; nombre?: string };
 
-    const data = await res.json();
-    console.log("STREAM BACKEND:", data);
+    try {
+      // Crear sesión en backend (el id_streamer lo saca del token)
+      const res = await fetch(`${BACKEND_URL}/streams/crear`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          titulo: "Mi Stream", // si luego quieres, puedes hacer esto editable
+        }),
+      });
 
-    // ===================================================
-    // GUARDAR EN LOCALSTORAGE PARA LOS REGALOS
-    // ===================================================
-    localStorage.setItem("id_streamer_actual", usuario.id_usuario);
-    localStorage.setItem("sesion_actual", data.streamId); // ID de sesión
-    console.log("⚡ STREAMER GUARDADO EN LOCALSTORAGE");
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        console.error("Error creando stream:", err);
+        alert(err.error || "No se pudo crear el stream");
+        return;
+      }
 
-    setStreamId(data.streamId);
-    setIsStreaming(true);
+      const data = await res.json(); // { streamId, link }
+      console.log("STREAM BACKEND:", data);
 
-    socket.emit("join_stream", { streamId: data.streamId, role: "streamer" });
+      // Guardar info para regalos y overlay
+      localStorage.setItem("id_streamer_actual", usuario.id_usuario);
+      localStorage.setItem("sesion_actual", data.streamId);
 
-    // Obtener cámara/micro
-    const stream = await navigator.mediaDevices.getUserMedia({
-      video: true,
-      audio: true,
-    });
+      setStreamId(data.streamId);
+      setIsStreaming(true);
 
-    streamRef.current = stream;
+      // Unirse al "room" de este stream
+      socket.emit("join_stream", { streamId: data.streamId, role: "streamer" });
 
-    if (localVideoRef.current) {
-      localVideoRef.current.srcObject = stream;
+      // Obtener cámara/micrófono
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: true,
+        audio: true,
+      });
+
+      streamRef.current = stream;
+
+      if (localVideoRef.current) {
+        localVideoRef.current.srcObject = stream;
+      }
+
+      // Cuando un viewer se conecta, creamos un peer para él
+      socket.on("viewer-joined", async (viewerId: string) => {
+        console.log("👤 Nuevo viewer:", viewerId);
+
+        const pc = createPeerConnection(viewerId, data.streamId);
+
+        stream.getTracks().forEach((track) => {
+          pc.addTrack(track, stream);
+        });
+
+        const offer = await pc.createOffer();
+        await pc.setLocalDescription(offer);
+
+        socket.emit("stream-offer", {
+          offer,
+          to: viewerId,
+          from: socket.id,
+          streamId: data.streamId,
+        });
+      });
+
+      alert(`🔗 Comparte este enlace con tus viewers:\n${data.link}`);
+    } catch (error) {
+      console.error("Error al iniciar stream:", error);
+      alert("Error inesperado al iniciar el stream");
     }
-
-    socket.on("viewer-joined", async (viewerId: string) => {
-      console.log("👤 Nuevo viewer:", viewerId);
-
-      const pc = createPeerConnection(viewerId);
-
-      stream.getTracks().forEach((track) => {
-        pc.addTrack(track, stream);
-      });
-
-      const offer = await pc.createOffer();
-      await pc.setLocalDescription(offer);
-
-      socket.emit("stream-offer", {
-        offer,
-        to: viewerId,
-        from: socket.id,
-        streamId: data.streamId,
-      });
-    });
-
-    alert(`🔗 Comparte el enlace: ${data.link}`);
   };
 
   // =============================================================
@@ -119,25 +141,32 @@ const Create = () => {
     try {
       console.log("⛔ Deteniendo stream...");
 
+      const token = localStorage.getItem("authToken");
+
+      // Apagar cámara y micrófono
       if (streamRef.current) {
         streamRef.current.getTracks().forEach((t) => t.stop());
         streamRef.current = null;
       }
 
+      // Cerrar todos los peer connections
       Object.values(peersRef.current).forEach((pc) => pc.close());
       peersRef.current = {};
 
-      if (streamId) {
-        await fetch(
-          `${import.meta.env.VITE_BACKEND_URL}/streams/${streamId}/finalizar`,
-          { method: "POST" }
-        );
+      // Avisar al backend y registrar minutos / nivel streamer
+      if (streamId && token) {
+        await fetch(`${BACKEND_URL}/streams/${streamId}/finalizar`, {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+        }).catch((e) => console.error("Error al finalizar stream:", e));
       }
 
       setIsStreaming(false);
       setStreamId("");
 
-      // LIMPIAR DATOS DE STREAMING
+      // Limpiar datos de sesión guardados
       localStorage.removeItem("sesion_actual");
 
       alert("Stream finalizado");
@@ -149,7 +178,7 @@ const Create = () => {
   // =============================================================
   //              CREAR PEER CONNECTION (STREAMER)
   // =============================================================
-  const createPeerConnection = (peerId: string) => {
+  const createPeerConnection = (peerId: string, currentStreamId: string) => {
     const pc = new RTCPeerConnection({
       iceServers: [{ urls: "stun:stun.l.google.com:19302" }],
     });
@@ -160,7 +189,7 @@ const Create = () => {
           candidate: event.candidate,
           to: peerId,
           from: socket.id,
-          streamId,
+          streamId: currentStreamId, // usamos el id correcto del stream
         });
       }
     };
@@ -171,7 +200,6 @@ const Create = () => {
 
   return (
     <div className="min-h-screen bg-background flex flex-col pb-20">
-      
       {/* Header */}
       <div className="flex items-center gap-2 p-4">
         <Button variant="ghost" size="icon" onClick={() => navigate(-1)}>
@@ -184,7 +212,7 @@ const Create = () => {
         </div>
       </div>
 
-      {/* Video */}
+      {/* Video + Botón de iniciar / detener */}
       <div className="flex flex-col items-center justify-center flex-1 mt-40">
         <video
           ref={localVideoRef}

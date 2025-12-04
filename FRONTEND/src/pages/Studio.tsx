@@ -38,9 +38,21 @@ const posts = [
   },
 ];
 
+// Helper para obtener headers con token si existe
+const getAuthHeaders = (extra: Record<string, string> = {}) => {
+  const token = localStorage.getItem("authToken");
+  const headers: Record<string, string> = { ...extra };
+  if (token) {
+    headers.Authorization = `Bearer ${token}`;
+  }
+  return headers;
+};
+
 const Studio = () => {
   const navigate = useNavigate();
-  const [tab, setTab] = useState("inspiracion");
+  const [tab, setTab] = useState<"inspiracion" | "monetizacion">(
+    "inspiracion"
+  );
   const [regalos, setRegalos] = useState<any[]>([]);
   const [showOverlay, setShowOverlay] = useState(false);
   const [nuevoRegalo, setNuevoRegalo] = useState({
@@ -54,17 +66,19 @@ const Studio = () => {
   // ===========================
   //   OBTENER USUARIO ACTUAL
   // ===========================
-  // Intentamos varias keys por compatibilidad:
-  // - "tistos_current_user" (modo streamer)
-  // - "usuario" (user que viene del backend)
-  // - "currentUser" (invitado / frontend)
   const rawUsuario = localStorage.getItem("usuario");
 
-  const usuarioActual = JSON.parse(rawUsuario);
+  let usuarioActual: any = null;
+  try {
+    usuarioActual = rawUsuario ? JSON.parse(rawUsuario) : null;
+  } catch (e) {
+    console.error("Error parseando usuario desde localStorage:", e);
+    usuarioActual = null;
+  }
 
-  // El id de streamer puede venir como id_usuario (backend) o id (frontend)
+  // El id de streamer puede venir como id_usuario (backend) o id (frontend antiguo)
   const id_streamer: string | undefined =
-    usuarioActual.id_usuario ?? usuarioActual.id;
+    usuarioActual?.id_usuario ?? usuarioActual?.id;
 
   console.log("usuarioActual Studio:", usuarioActual);
   console.log("id_streamer Studio:", id_streamer);
@@ -76,25 +90,30 @@ const Studio = () => {
     const ensureStreamerAndLoad = async () => {
       if (!id_streamer) {
         console.warn("No hay id_streamer, no se puede cargar Studio");
-        toast.error("No se encontró tu usuario streamer. Vuelve a iniciar sesión.");
+        toast.error(
+          "No se encontró tu usuario streamer. Vuelve a iniciar sesión."
+        );
         setLoading(false);
         return;
       }
 
       try {
         // Consultar al backend si el usuario existe y es STREAMER
-        const check = await fetch(`${BACKEND_URL}/usuarios/${id_streamer}`);
+        const check = await fetch(`${BACKEND_URL}/usuarios/${id_streamer}`, {
+          headers: getAuthHeaders(),
+        });
+
         if (check.status === 200) {
           const u = await check.json();
           if (u.rol === "STREAMER") {
-            await cargarRegalos();
+            await cargarRegalos(id_streamer);
             return;
           }
         }
 
         // Si no es streamer o no existe, intentar cambiar rol
-        await cambiarARolStreamer();
-        await cargarRegalos();
+        await cambiarARolStreamer(id_streamer);
+        await cargarRegalos(id_streamer);
       } catch (err) {
         console.error("Error validando streamer:", err);
         toast.error("No fue posible verificar el streamer");
@@ -115,10 +134,12 @@ const Studio = () => {
     const socket = io(BACKEND_URL, { autoConnect: true });
 
     socket.on("connect", () => {
-      console.log("Socket conectado (frontend):", socket.id);
+      console.log("Socket conectado (frontend Studio):", socket.id);
+      // Unirse a un "room" propio del streamer
       socket.emit("join_streamer_room", id_streamer);
     });
 
+    // Evento que enviará el backend cuando reciba un regalo
     socket.on("gift_received", (data: any) => {
       const detail = {
         type: "gift",
@@ -127,11 +148,13 @@ const Studio = () => {
         points: data.puntos_otorgados || data.puntos || 0,
         multiplier: data.cantidad || 1,
       };
-      window.dispatchEvent(new CustomEvent("tistos:overlay", { detail }));
+      window.dispatchEvent(
+        new CustomEvent("tistos:overlay", { detail })
+      );
     });
 
     socket.on("disconnect", () => {
-      console.log("Socket desconectado (frontend)");
+      console.log("Socket desconectado (frontend Studio)");
     });
 
     return () => {
@@ -139,25 +162,37 @@ const Studio = () => {
     };
   }, [id_streamer]);
 
-  const cambiarARolStreamer = async () => {
-    if (!id_streamer) return;
-
+  const cambiarARolStreamer = async (id_streamer_param: string) => {
     try {
-      const resp = await fetch(`${BACKEND_URL}/usuarios/${id_streamer}/rol`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ rol: "STREAMER" }),
-      });
+      const resp = await fetch(
+        `${BACKEND_URL}/usuarios/${id_streamer_param}/rol`,
+        {
+          method: "PUT",
+          headers: getAuthHeaders({ "Content-Type": "application/json" }),
+          body: JSON.stringify({ rol: "STREAMER" }),
+        }
+      );
 
       if (resp.status === 200) {
         const usuarioActualizado = await resp.json();
-        // Guardamos como tistos_current_user para futuras lecturas
+
+        // Guardamos como "usuario" (backend) y "tistos_current_user" para compatibilidad
+        localStorage.setItem(
+          "usuario",
+          JSON.stringify(usuarioActualizado)
+        );
         localStorage.setItem(
           "tistos_current_user",
           JSON.stringify(usuarioActualizado)
         );
+
         toast.success("¡Bienvenido al modo Streamer!");
       } else {
+        console.warn(
+          "Error al cambiar al modo streamer, status:",
+          resp.status,
+          await resp.text()
+        );
         toast.error("Error al cambiar al modo streamer");
       }
     } catch (error) {
@@ -166,14 +201,16 @@ const Studio = () => {
     }
   };
 
-  const cargarRegalos = async () => {
-    if (!id_streamer) return;
-
+  const cargarRegalos = async (id_streamer_param: string) => {
     try {
       setLoading(true);
       const resp = await fetch(
-        `${BACKEND_URL}/regalos/streamer/${id_streamer}`
+        `${BACKEND_URL}/regalos/streamer/${id_streamer_param}`,
+        {
+          headers: getAuthHeaders(),
+        }
       );
+
       if (resp.status === 200) {
         const data = await resp.json();
         setRegalos(data);
@@ -192,7 +229,7 @@ const Studio = () => {
     }
   };
 
-  // Simula recibir un regalo (dummy)
+  // Simula recibir un regalo localmente (solo para test visual)
   const recibirRegalo = (nombre: string, usuario: string) => {
     setShowOverlay(true);
     setTimeout(() => setShowOverlay(false), 2000);
@@ -205,7 +242,9 @@ const Studio = () => {
     e.preventDefault();
 
     if (!id_streamer) {
-      toast.error("No se encontró tu usuario streamer. Vuelve a iniciar sesión.");
+      toast.error(
+        "No se encontró tu usuario streamer. Vuelve a iniciar sesión."
+      );
       return;
     }
 
@@ -219,7 +258,7 @@ const Studio = () => {
         // Editar regalo existente
         const resp = await fetch(`${BACKEND_URL}/regalos/${editId}`, {
           method: "PUT",
-          headers: { "Content-Type": "application/json" },
+          headers: getAuthHeaders({ "Content-Type": "application/json" }),
           body: JSON.stringify({
             nombre: nuevoRegalo.nombre,
             costo_monedas: Number(nuevoRegalo.costo),
@@ -230,8 +269,13 @@ const Studio = () => {
         if (resp.status === 200) {
           toast.success("Regalo actualizado");
           setEditId(null);
-          await cargarRegalos();
+          await cargarRegalos(id_streamer);
         } else {
+          console.warn(
+            "Error al actualizar regalo, status:",
+            resp.status,
+            await resp.text()
+          );
           toast.error("Error al actualizar el regalo");
         }
       } else {
@@ -247,13 +291,13 @@ const Studio = () => {
 
         const resp = await fetch(`${BACKEND_URL}/regalos/crear`, {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          headers: getAuthHeaders({ "Content-Type": "application/json" }),
           body: JSON.stringify(payload),
         });
 
         if (resp.status === 200) {
           toast.success("Regalo creado");
-          await cargarRegalos();
+          await cargarRegalos(id_streamer);
         } else {
           const txt = await resp.text();
           console.error("Error backend /regalos/crear:", txt);
@@ -283,12 +327,20 @@ const Studio = () => {
     try {
       const resp = await fetch(`${BACKEND_URL}/regalos/${id_regalo}`, {
         method: "DELETE",
+        headers: getAuthHeaders(),
       });
 
       if (resp.status === 200) {
         toast.success("Regalo eliminado");
-        await cargarRegalos();
+        if (id_streamer) {
+          await cargarRegalos(id_streamer);
+        }
       } else {
+        console.warn(
+          "Error al eliminar regalo, status:",
+          resp.status,
+          await resp.text()
+        );
         toast.error("Error al eliminar el regalo");
       }
     } catch (error) {
@@ -308,14 +360,18 @@ const Studio = () => {
       >
         <ArrowLeft className="w-5 h-5" />
       </Button>
+
       <h2 className="text-3xl font-bold text-center pt-8 mb-6">
         Tistos Studio
       </h2>
 
+      {/* Overlay por eventos de socket */}
       <OverlayAnimator />
+
+      {/* Progreso de streamer (lo conectaremos al backend en el componente) */}
       <StreamerProgress />
 
-      {/* Estadísticas */}
+      {/* Estadísticas (por ahora mock) */}
       <div className="max-w-xl mx-auto bg-card rounded-xl p-6 mb-6 shadow flex flex-col gap-4">
         <div className="flex items-center justify-between mb-2">
           <span className="font-bold text-lg">Estadísticas</span>
@@ -326,12 +382,16 @@ const Studio = () => {
         <div className="grid grid-cols-3 gap-4 text-center">
           <div>
             <span className="font-bold text-xl">0</span>
-            <div className="text-xs text-muted-foreground">Visualizaciones</div>
+            <div className="text-xs text-muted-foreground">
+              Visualizaciones
+            </div>
             <div className="text-xs text-muted-foreground">0% 7d</div>
           </div>
           <div>
             <span className="font-bold text-xl">0</span>
-            <div className="text-xs text-muted-foreground">Seguidores netos</div>
+            <div className="text-xs text-muted-foreground">
+              Seguidores netos
+            </div>
             <div className="text-xs text-muted-foreground">0% 7d</div>
           </div>
           <div>
@@ -357,7 +417,7 @@ const Studio = () => {
         </Button>
       </div>
 
-      {/* Tabs */}
+      {/* Tabs (por ahora solo monetización) */}
       <div className="max-w-xl mx-auto flex mb-4 gap-2">
         <Button
           variant={tab === "monetizacion" ? "secondary" : "outline"}
@@ -369,7 +429,7 @@ const Studio = () => {
         </Button>
       </div>
 
-      {/* Filtros */}
+      {/* Filtros (mock) */}
       <div className="max-w-xl mx-auto flex gap-2 mb-6">
         <Button variant="outline" size="sm">
           Trending
@@ -444,7 +504,11 @@ const Studio = () => {
             }
           />
           <Button type="submit" size="sm" variant="secondary">
-            {editId ? <Edit className="w-4 h-4" /> : <PlusCircle className="w-4 h-4" />}
+            {editId ? (
+              <Edit className="w-4 h-4" />
+            ) : (
+              <PlusCircle className="w-4 h-4" />
+            )}
           </Button>
         </form>
         <div>
@@ -487,7 +551,7 @@ const Studio = () => {
         </div>
       </div>
 
-      {/* Overlay animado de regalo recibido */}
+      {/* Overlay animado de prueba local */}
       {showOverlay && (
         <div className="fixed inset-0 flex items-center justify-center z-50 pointer-events-none">
           <div className="bg-primary text-white px-8 py-6 rounded-2xl shadow-lg animate-bounce text-center text-xl font-bold">

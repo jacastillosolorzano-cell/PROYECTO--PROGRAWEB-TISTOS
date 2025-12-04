@@ -5,7 +5,10 @@ interface ConfigPanelProps {
   setHoursPerLevel: (value: number) => void;
 }
 
-const ConfigPanel: React.FC<ConfigPanelProps> = ({ hoursPerLevel, setHoursPerLevel }) => {
+const ConfigPanel: React.FC<ConfigPanelProps> = ({
+  hoursPerLevel,
+  setHoursPerLevel,
+}) => {
   const min = 1;
   const max = 999;
 
@@ -15,7 +18,7 @@ const ConfigPanel: React.FC<ConfigPanelProps> = ({ hoursPerLevel, setHoursPerLev
   };
 
   // evitar que la rueda del ratón cambie el número al pasar sobre el input
-  const preventWheel = (e: React.WheelEvent) => {
+  const preventWheel = (e: React.WheelEvent<HTMLInputElement>) => {
     (e.target as HTMLElement).blur();
   };
 
@@ -30,10 +33,20 @@ const ConfigPanel: React.FC<ConfigPanelProps> = ({ hoursPerLevel, setHoursPerLev
         boxShadow: "0 0 12px rgba(255, 102, 204, 0.06)",
       }}
     >
-      <h3 style={{ margin: "0 0 10px 0", color: "#e6e6e6", fontSize: 15 }}>⚙️ Configurar progresión</h3>
+      <h3
+        style={{
+          margin: "0 0 10px 0",
+          color: "#e6e6e6",
+          fontSize: 15,
+        }}
+      >
+        ⚙️ Configurar progresión
+      </h3>
 
       <div style={{ display: "inline-flex", alignItems: "center", gap: 10 }}>
-        <label style={{ fontSize: 14, color: "#d0d0d0" }}>Horas requeridas por nivel:</label>
+        <label style={{ fontSize: 14, color: "#d0d0d0" }}>
+          Horas requeridas por nivel:
+        </label>
 
         <div
           style={{
@@ -67,7 +80,13 @@ const ConfigPanel: React.FC<ConfigPanelProps> = ({ hoursPerLevel, setHoursPerLev
           />
 
           {/* botones pequeños verticales al costado */}
-          <div style={{ display: "flex", flexDirection: "column", marginLeft: 8 }}>
+          <div
+            style={{
+              display: "flex",
+              flexDirection: "column",
+              marginLeft: 8,
+            }}
+          >
             <button
               onClick={() => handleChange(hoursPerLevel + 1)}
               title="Incrementar"
@@ -85,7 +104,14 @@ const ConfigPanel: React.FC<ConfigPanelProps> = ({ hoursPerLevel, setHoursPerLev
                 cursor: "pointer",
               }}
             >
-              <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <svg
+                width="10"
+                height="10"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+              >
                 <path d="M12 5l7 7H5l7-7z" />
               </svg>
             </button>
@@ -107,7 +133,14 @@ const ConfigPanel: React.FC<ConfigPanelProps> = ({ hoursPerLevel, setHoursPerLev
                 cursor: "pointer",
               }}
             >
-              <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <svg
+                width="10"
+                height="10"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+              >
                 <path d="M12 19l-7-7h14l-7 7z" />
               </svg>
             </button>
@@ -115,7 +148,9 @@ const ConfigPanel: React.FC<ConfigPanelProps> = ({ hoursPerLevel, setHoursPerLev
         </div>
       </div>
 
-      <p style={{ marginTop: 8, fontSize: 12, color: "#9a9a9a" }}>(Cambia este valor para ajustar la progresión)</p>
+      <p style={{ marginTop: 8, fontSize: 12, color: "#9a9a9a" }}>
+        (Cambia este valor para ajustar la progresión)
+      </p>
     </div>
   );
 };
