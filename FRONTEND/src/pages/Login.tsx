@@ -32,7 +32,6 @@ const Login = () => {
       try {
         data = await resp.json();
       } catch {
-        console.warn("[Login] No se pudo parsear JSON de la respuesta");
         setError("Respuesta inesperada del servidor");
         return;
       }
@@ -53,7 +52,6 @@ const Login = () => {
       }
 
       if (!token || !usuario) {
-        console.error("[Login] Faltan token o usuario en la respuesta");
         setError("Respuesta de login inválida del servidor");
         return;
       }
@@ -84,7 +82,6 @@ const Login = () => {
 
       navigate("/index");
     } catch (error) {
-      console.error("[Login] Error de red/fetch:", error);
       setError("Error al conectar con el servidor");
     }
   };

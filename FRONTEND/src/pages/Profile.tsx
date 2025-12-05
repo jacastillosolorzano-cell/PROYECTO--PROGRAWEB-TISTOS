@@ -2,6 +2,8 @@
 import { useState, useEffect } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
+import LogoutButton from "@/components/LogoutButton";
+
 import {
   ArrowLeft,
   Menu,
@@ -17,7 +19,6 @@ import { useUser } from "../hooks/use-user";
 import { useToast } from "../hooks/use-toast";
 import { formatPoints } from "../lib/utils";
 import { BACKEND_URL } from "@/config";
-import LogOutButton from "@/pages/ventanas/LogOutButton";
 import HeaderSaldo from "@/components/HeaderSaldo";
 
 // ===============================
@@ -276,8 +277,7 @@ const Profile = () => {
           </Button>
 
           {/* Cerrar sesión */}
-          <LogOutButton />
-
+          <LogoutButton />
           <Button
             variant="ghost"
             className="justify-start w-full px-6 py-4 text-left"
