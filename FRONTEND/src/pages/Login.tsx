@@ -13,15 +13,10 @@ const Login = () => {
 
   const navigate = useNavigate();
 
-  console.log("[Login] BACKEND_URL =", BACKEND_URL);
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setError("");
-
-    console.log("[Login] handleLogin llamado");
-    console.log("[Login] Enviando a:", `${BACKEND_URL}/auth/login`);
-    console.log("[Login] Payload:", { correo: email, contrasena: password });
 
     try {
       const resp = await fetch(`${BACKEND_URL}/auth/login`, {
@@ -41,8 +36,6 @@ const Login = () => {
         setError("Respuesta inesperada del servidor");
         return;
       }
-
-      console.log("[Login] Respuesta:", resp.status, data);
 
       if (!resp.ok) {
         setError(data?.error || "Correo y/o contraseña incorrectos");
