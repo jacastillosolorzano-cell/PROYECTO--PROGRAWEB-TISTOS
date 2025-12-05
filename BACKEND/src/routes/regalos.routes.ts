@@ -3,6 +3,7 @@ import { Router, Request, Response } from "express";
 import fs from "fs";
 import { prisma, PrismaClientKnownRequestError } from "../prisma/client.js";
 import { normalizeStreamerId } from "../utils/normalizeStreamerId.js";
+import { recalcularNivelEspectador } from "../utils/niveles.js";
 import { authMiddleware, AuthRequest } from "../middleware/auth.middleware.js";
 
 const router = Router();
@@ -107,7 +108,13 @@ router.get("/streamer/:id_streamer", async (req: Request, resp: Response) => {
       return;
     }
 
-    const regalos = await prisma.regalo.findMany({ where: { id_streamer } });
+    // Solo listar regalos activos del streamer
+    const regalos = await prisma.regalo.findMany({
+      where: {
+        id_streamer,
+        activo: true,
+      },
+    });
     resp.status(200).json(regalos);
   } catch (error) {
     console.error("Error al obtener regalos por streamer:", error);
@@ -220,11 +227,14 @@ router.delete(
         });
       }
 
-      await prisma.regalo.delete({
+      // En lugar de eliminar físicamente el registro, marcamos el regalo como inactivo
+      // para evitar problemas con claves foráneas (envíos asociados)
+      await prisma.regalo.update({
         where: { id_regalo },
+        data: { activo: false },
       });
 
-      resp.status(200).json({ message: "Regalo eliminado exitosamente" });
+      resp.status(200).json({ message: "Regalo eliminado exitosamente (desactivado)" });
     } catch (error) {
       const prismaError = error as PrismaClientKnownRequestError;
       if (prismaError.code === "P2025") {
@@ -327,6 +337,13 @@ router.post(
         data: { saldo_monedas: { decrement: costoTotal } },
       });
 
+      // Obtener progreso antes de sumar puntos para detectar subida de nivel
+      const progresoAntes = await prisma.progresoEspectador.findFirst({
+        where: { id_espectador: id_usuario, id_streamer },
+        include: { nivel: true },
+      });
+      const nivelOrdenAntes = progresoAntes?.nivel?.orden ?? 0;
+
       // SUMAR PUNTOS
       await prisma.progresoEspectador.updateMany({
         where: { id_espectador: id_usuario, id_streamer },
@@ -336,6 +353,59 @@ router.post(
           },
         },
       });
+
+      // Recalcular nivel del espectador y crear notificación
+      await recalcularNivelEspectador(id_usuario, id_streamer);
+
+      // Obtener progreso después de la actualización
+      const progresoDespues = await prisma.progresoEspectador.findFirst({
+        where: { id_espectador: id_usuario, id_streamer },
+        include: { nivel: true },
+      });
+      const nivelOrdenDespues = progresoDespues?.nivel?.orden ?? nivelOrdenAntes;
+      const nivelNombreDespues = progresoDespues?.nivel?.nombre_nivel ?? null;
+
+      // Si subió de nivel, emitir evento en tiempo real al espectador
+      if (nivelOrdenDespues > nivelOrdenAntes) {
+        try {
+          const socketsMap = req.app.locals?.userSockets as Record<string, string>;
+          const ioServer = req.app.locals?.io;
+          const socketId = socketsMap?.[id_usuario];
+          if (socketId && ioServer) {
+            ioServer.to(socketId).emit("level:up", {
+              nivel: nivelNombreDespues,
+              orden: nivelOrdenDespues,
+            });
+          }
+        } catch (emitErr) {
+          console.error("Error al emitir level-up en regalo:", emitErr);
+        }
+      }
+
+      // Emitir evento en tiempo real al streamer para overlay animado
+      try {
+        const io = req.app.locals?.io;
+        if (io) {
+          // Obtener nombre del espectador
+          const espectador = await prisma.usuario.findUnique({
+            where: { id_usuario },
+            select: { nombre: true },
+          });
+          const payload = {
+            usuario: espectador?.nombre ?? "",
+            regalo: regalo.nombre,
+            puntos: regalo.puntos_otorgados * cantidad,
+            timestamp: new Date().toISOString(),
+          };
+          const roomName = `stream_${id_streamer}`;
+          // Emitir con nombre de evento original
+          io.to(roomName).emit("gift:received", payload);
+          // Emitir con nombre alternativo para compatibilidad con el front‑end del Studio
+          io.to(roomName).emit("gift_received", payload);
+        }
+      } catch (err) {
+        console.error("Error al emitir regalo en tiempo real:", err);
+      }
 
       // CREAR REGISTRO
       const envio = await prisma.envioRegalo.create({

@@ -162,7 +162,8 @@ router.get("/:id_usuario/progreso", async (req: Request, resp: Response) => {
   try {
     const { id_usuario } = req.params;
 
-    const progresos = await prisma.progresoEspectador.findMany({
+    // Obtener todos los progresos del espectador con información de nivel y streamer
+    const progresosRaw = await prisma.progresoEspectador.findMany({
       where: { id_espectador: id_usuario },
       include: {
         nivel: true,
@@ -175,7 +176,39 @@ router.get("/:id_usuario/progreso", async (req: Request, resp: Response) => {
       },
     });
 
-    resp.status(200).json(progresos);
+    // Enriquecer cada progreso con información del siguiente nivel y puntos faltantes
+    const enriched = [] as any[];
+    for (const prog of progresosRaw) {
+      const id_streamer = prog.id_streamer;
+      let nextLevelName: string | null = null;
+      let nextLevelPoints: number | null = null;
+      let puntosFaltantes: number | null = null;
+      const nivelActualNombre: string | null = prog.nivel?.nombre_nivel ?? null;
+      try {
+        // Obtener niveles activos del streamer ordenados de menor a mayor
+        const niveles = await prisma.nivelEspectador.findMany({
+          where: { id_streamer, activo: true },
+          orderBy: { orden: "asc" },
+        });
+        const currentOrder = prog.nivel?.orden ?? 0;
+        const next = niveles.find((n) => n.orden > currentOrder);
+        if (next) {
+          nextLevelName = next.nombre_nivel;
+          nextLevelPoints = next.puntos_requeridos;
+          puntosFaltantes = Math.max(next.puntos_requeridos - prog.puntos_actuales, 0);
+        }
+      } catch (innerErr) {
+        console.error("Error al calcular siguiente nivel en progreso:", innerErr);
+      }
+      enriched.push({
+        ...prog,
+        nivel_actual: nivelActualNombre,
+        nivel_siguiente: nextLevelName,
+        puntos_para_siguiente: nextLevelPoints,
+        puntos_faltantes: puntosFaltantes,
+      });
+    }
+    resp.status(200).json(enriched);
   } catch (error) {
     console.error("Error al obtener progreso:", error);
     resp.status(500).json({ error: "Error al obtener progreso" });
@@ -217,6 +250,66 @@ router.post("/:id_usuario/mensaje", async (req: Request, resp: Response) => {
   }
 });
 
+// ================================================================
+//  Obtener los puntos faltantes para que un espectador suba al siguiente nivel
+//  GET /usuarios/:id_usuario/faltan-puntos/:id_streamer
+//  Devuelve el nivel actual, el siguiente nivel y la cantidad de puntos que faltan
+// ================================================================
+router.get(
+  "/:id_usuario/faltan-puntos/:id_streamer",
+  async (req: Request, resp: Response) => {
+    try {
+      const { id_usuario, id_streamer } = req.params;
 
+      if (!id_usuario || !id_streamer) {
+        return resp
+          .status(400)
+          .json({ error: "id_usuario e id_streamer son requeridos" });
+      }
+
+      // Obtener el progreso actual del espectador con el streamer
+      const progreso = await prisma.progresoEspectador.findFirst({
+        where: { id_espectador: id_usuario, id_streamer },
+        include: { nivel: true },
+      });
+
+      if (!progreso) {
+        return resp
+          .status(404)
+          .json({ error: "Progreso no encontrado para este espectador" });
+      }
+
+      // Obtener los niveles activos del streamer ordenados por orden ascendente
+      const niveles = await prisma.nivelEspectador.findMany({
+        where: { id_streamer, activo: true },
+        orderBy: { orden: "asc" },
+      });
+
+      // Determinar el orden actual y el siguiente nivel
+      const currentOrder = progreso.nivel?.orden ?? 0;
+      const nextLevel = niveles.find((n) => n.orden > currentOrder);
+
+      // Calcular puntos faltantes
+      let faltantes = 0;
+      if (nextLevel) {
+        faltantes = nextLevel.puntos_requeridos - progreso.puntos_actuales;
+        if (faltantes < 0) faltantes = 0;
+      }
+
+      return resp.status(200).json({
+        puntos_actuales: progreso.puntos_actuales,
+        nivel_actual: progreso.nivel?.nombre_nivel ?? null,
+        nivel_siguiente: nextLevel?.nombre_nivel ?? null,
+        puntos_para_siguiente: nextLevel?.puntos_requeridos ?? null,
+        puntos_faltantes: faltantes,
+      });
+    } catch (error) {
+      console.error("Error al calcular puntos faltantes:", error);
+      return resp
+        .status(500)
+        .json({ error: "Error al calcular puntos faltantes" });
+    }
+  }
+);
 
 export default router;

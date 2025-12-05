@@ -147,10 +147,44 @@ const StreamerProgress: React.FC = () => {
     localStorage.setItem("streamer_hours_required", String(value));
   };
 
-  const handleChangePuntosViewer = (value: number) => {
+  // Cuando se modifica el puntaje requerido por nivel de espectadores desde el estudio,
+  // persistimos el valor en localStorage **y** enviamos la actualización al backend para
+  // recalcular los niveles.  Utilizamos la nueva ruta PUT /niveles/espectador/base/:id_streamer
+  // que ajusta los puntos requeridos de todos los niveles de espectadores en este canal.
+  const handleChangePuntosViewer = async (value: number) => {
     if (value <= 0) return;
     setPuntosRequeridosViewer(value);
     localStorage.setItem("viewer_points_required", String(value));
+
+    // Obtener streamer actual desde localStorage (mismo que en useEffect)
+    const rawUsuario = localStorage.getItem("usuario");
+    let usuario: any = null;
+    try {
+      usuario = rawUsuario ? JSON.parse(rawUsuario) : null;
+    } catch {
+      usuario = null;
+    }
+    const id_streamer: string | undefined =
+      usuario?.id_usuario ?? usuario?.id;
+    if (!id_streamer) return;
+
+    // Obtener token para autenticación
+    const token = localStorage.getItem("authToken");
+    try {
+      await fetch(
+        `${BACKEND_URL}/niveles/espectador/base/${id_streamer}`,
+        {
+          method: "PUT",
+          headers: {
+            "Content-Type": "application/json",
+            ...(token ? { Authorization: `Bearer ${token}` } : {}),
+          },
+          body: JSON.stringify({ base: value }),
+        }
+      );
+    } catch (err) {
+      console.error("Error actualizando puntos requeridos de espectadores:", err);
+    }
   };
 
   return (

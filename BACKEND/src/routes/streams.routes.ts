@@ -127,6 +127,13 @@ router.post(
         (fecha_fin.getTime() - sesion.fecha_inicio.getTime()) / 60000
       );
 
+      // Obtener perfil y nivel antes de actualizar para detectar subida de nivel
+      const perfilAntes = await prisma.perfilStreamer.findUnique({
+        where: { id_usuario },
+        include: { nivel: true },
+      });
+      const nivelOrdenAntes = perfilAntes?.nivel?.orden ?? 0;
+
       const actualizada = await prisma.sesionStreaming.update({
         where: { id_sesion },
         data: {
@@ -138,6 +145,7 @@ router.post(
       // Actualizar PerfilStreamer (acumulando minutos)
       let perfil = await prisma.perfilStreamer.findUnique({
         where: { id_usuario },
+        include: { nivel: true },
       });
 
       if (!perfil) {
@@ -146,6 +154,7 @@ router.post(
             id_usuario,
             horas_transmitidas_total: duracion, // almacenamos minutos
           },
+          include: { nivel: true },
         });
       } else {
         perfil = await prisma.perfilStreamer.update({
@@ -155,11 +164,43 @@ router.post(
               increment: duracion,
             },
           },
+          include: { nivel: true },
         });
       }
 
       // Recalcular nivel del streamer (puede generar notificación)
       await recalcularNivelStreamer(id_usuario);
+
+      // Consultar de nuevo el perfil para obtener el nuevo nivel
+      const perfilDespues = await prisma.perfilStreamer.findUnique({
+        where: { id_usuario },
+        include: { nivel: true },
+      });
+      const nivelOrdenDespues = perfilDespues?.nivel?.orden ?? nivelOrdenAntes;
+      const nivelNombreDespues = perfilDespues?.nivel?.nombre_nivel ?? null;
+
+      // Si subió de nivel, emitir evento al socket del streamer.
+      // Para mantener consistencia con el front‑end, usamos el mismo nombre de
+      // evento "level:up" que se utiliza para los espectadores. De este modo,
+      // cualquier cliente que escuche este evento mostrará el aviso de subida de nivel.
+      if (nivelOrdenDespues > nivelOrdenAntes) {
+        try {
+          const socketsMap = req.app.locals.userSockets as Record<string, string>;
+          const ioServer = req.app.locals.io;
+          const socketId = socketsMap?.[id_usuario];
+          if (socketId && ioServer) {
+            ioServer.to(socketId).emit("level:up", {
+              nivel: nivelNombreDespues,
+              orden: nivelOrdenDespues,
+            });
+          }
+        } catch (emitError) {
+          console.error(
+            "Error al emitir evento de subida de nivel del streamer:",
+            emitError
+          );
+        }
+      }
 
       resp
         .status(200)

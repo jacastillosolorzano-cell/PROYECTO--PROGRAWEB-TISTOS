@@ -146,6 +146,15 @@ const Studio = () => {
       window.dispatchEvent(new CustomEvent("tistos:overlay", { detail }));
     });
 
+    // 🎉 SUBIDA DE NIVEL EN TIEMPO REAL
+    // Escuchar evento level:up emitido por el backend cuando el streamer sube de nivel
+    socket.on("level:up", (data: any) => {
+      // data: { nivel: string, orden: number }
+      const nivelName = data?.nivel || `Nivel ${data?.orden}`;
+      setLevelUpMessage(`¡Has subido al ${nivelName} como streamer! 🎉`);
+      setLevelUpOpen(true);
+    });
+
     socket.on("disconnect", () => {
       console.log("Socket desconectado (frontend Studio)");
     });

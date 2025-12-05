@@ -19,6 +19,7 @@ import authRouter, { loginHandler, logoutHandler } from "./routes/auth.routes.js
 import streamersRouter from "./routes/streamers.route.js";
 import monedasRouter from "./routes/monedas.routes.js";
 import nivelesRouter from "./routes/niveles.routes.js";
+import nivelStreamerRouter from "./routes/nivelStreamer.routes.js";
 import notificacionesRouter from "./routes/notificaciones.routes.js";
 import recargasRouter from "./routes/recargas.routes.js";
 import streamerPerfilRouter from "./routes/streamerPerfil.routes.js";
@@ -53,6 +54,8 @@ app.use("/streamers", streamersRouter);
 app.use("/auth", authRouter);
 app.use("/monedas", monedasRouter);
 app.use("/niveles", nivelesRouter);
+// Rutas para actualizar niveles de streamer (horas requeridas por nivel)
+app.use("/niveles", nivelStreamerRouter);
 app.use("/notificaciones", notificacionesRouter);
 app.use("/recargas", recargasRouter);
 app.use("/streamers", streamerPerfilRouter);
@@ -73,6 +76,9 @@ const io = new IOServer(server, {
   },
 });
 
+// Hacer disponible el servidor de sockets en toda la app para poder emitir
+app.locals.io = io;
+
 // ===============================================================
 //                  MEMORIA DE CONEXIÓN DE STREAMS
 // ===============================================================
@@ -83,11 +89,32 @@ type StreamRoom = {
 
 const streams: Record<string, StreamRoom> = {};
 
+// Mapeo de usuarios a sockets para notificaciones personalizadas
+const userSockets: Record<string, string> = {};
+
+// Hacer el mapeo disponible en toda la app para rutas HTTP
+// De este modo, las rutas pueden emitir eventos al socket del usuario correcto
+app.locals.userSockets = userSockets;
+
 // ===============================================================
 //                      SOCKET CONNECTION
 // ===============================================================
 io.on("connection", (socket) => {
   console.log("🔌 Socket conectado:", socket.id);
+
+  // =============================================================
+  //      STREAMER ROOM — registrar socket para notificaciones
+  // =============================================================
+  // El frontend del estudio emite "join_streamer_room" con el id del streamer
+  // para que el backend sepa a qué socket enviar las notificaciones (nivel, regalos).
+  socket.on("join_streamer_room", (id_streamer: string) => {
+    if (id_streamer) {
+      userSockets[id_streamer] = socket.id;
+      console.log(
+        `📺 Streamer ${id_streamer} conectado al room personal con socket ${socket.id}`
+      );
+    }
+  });
 
   // =============================================================
   //             JOIN STREAM (VIDEO)
@@ -121,7 +148,7 @@ io.on("connection", (socket) => {
   // =============================================================
   //                  JOIN CHAT
   // =============================================================
-  socket.on("chat:join", ({ streamId, userId, nombre }) => {
+  socket.on("chat:join", async ({ streamId, userId, nombre }) => {
     if (!streamId || !userId) return;
 
     const roomName = `stream_${streamId}`;
@@ -129,12 +156,41 @@ io.on("connection", (socket) => {
 
     console.log(`💬 ${nombre} (${userId}) se unió al chat ${streamId}`);
 
+    // Determinar el nivel actual del espectador para este streamer
+    let nivelOrden = 1;
+    let nivelNombre: string | null = null;
+    try {
+      const sesion = await prisma.sesionStreaming.findUnique({
+        where: { id_sesion: streamId },
+        select: { id_streamer: true },
+      });
+      if (sesion) {
+        const progreso = await prisma.progresoEspectador.findFirst({
+          where: { id_espectador: userId, id_streamer: sesion.id_streamer },
+          include: { nivel: true },
+        });
+        if (progreso) {
+          nivelOrden = progreso.nivel?.orden ?? 1;
+          nivelNombre = progreso.nivel?.nombre_nivel ?? null;
+        }
+      }
+    } catch (err) {
+      console.error("Error al obtener nivel en chat:join", err);
+    }
+
     io.to(roomName).emit("chat:user-joined", {
       streamId,
       userId,
       nombre,
+      nivelOrden,
+      nivelNombre,
       timestamp: new Date().toISOString(),
     });
+
+    // Registrar el socket para este usuario
+    if (userId) {
+      userSockets[userId] = socket.id;
+    }
   });
 
   // =============================================================
@@ -243,6 +299,14 @@ io.on("connection", (socket) => {
       }
 
       s.viewers = s.viewers.filter((v) => v !== socket.id);
+    }
+
+    // Eliminar socket de mapeo de usuarios
+    for (const uid in userSockets) {
+      if (userSockets[uid] === socket.id) {
+        delete userSockets[uid];
+        break;
+      }
     }
   });
 });
