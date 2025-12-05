@@ -35,9 +35,10 @@ const PORT = process.env.PORT || 5002;
 // ===============================================================
 app.use(
   cors({
-    origin: process.env.FRONTEND_URL,
+    origin: process.env.FRONTEND_URL ?? '*',
     methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-    credentials: true,
+    // Evitar credentials cuando el origen es wildcard
+    credentials: !!process.env.FRONTEND_URL,
   })
 );
 
@@ -70,9 +71,10 @@ const server = http.createServer(app);
 
 const io = new IOServer(server, {
   cors: {
-    origin: process.env.FRONTEND_URL,
+    origin: process.env.FRONTEND_URL ?? '*',
     methods: ["GET", "POST"],
-    credentials: true,
+    // Si no hay FRONTEND_URL configurada, no usamos credentials para evitar conflictos con '*'
+    credentials: !!process.env.FRONTEND_URL,
   },
 });
 

@@ -144,8 +144,9 @@ socket.on("gift:received", (data) => {
       setStreamId(data.streamId);
       setIsStreaming(true);
       setMessages([]);
-
-      setShareUrl(data.link);
+      // Si el backend no devolvió `link`, construimos la URL en el cliente
+      const builtLink = data.link ?? `${window.location.origin}/#/viewer/${data.streamId}`;
+      setShareUrl(builtLink);
       setShowShareModal(true);
 
       socket.emit("join_stream", { streamId: data.streamId, role: "streamer" });

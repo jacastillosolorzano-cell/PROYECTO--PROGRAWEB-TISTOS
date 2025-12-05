@@ -81,8 +81,13 @@ router.post(
         },
       });
 
-      const frontendBase = process.env.FRONTEND_URL!;
-      const link = `${frontendBase}/#/viewer/${streamId}`;
+      // Si FRONTEND_URL está configurada, devolvemos el link completo.
+      // Si no, devolvemos `link: null` para que el frontend construya la URL
+      // usando `window.location.origin` (esto hace que funcione en cualquier host).
+      const frontendBase = process.env.FRONTEND_URL ?? null;
+      const link = frontendBase
+        ? `${String(frontendBase).replace(/\/$/, '')}/#/viewer/${streamId}`
+        : null;
 
       resp.status(200).json({ streamId, link });
     } catch (error) {
