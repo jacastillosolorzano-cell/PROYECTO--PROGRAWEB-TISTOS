@@ -277,7 +277,7 @@ const Profile = () => {
           </Button>
 
           {/* Cerrar sesión */}
-          <LogoutButton />
+          <LogoutButton/>
           <Button
             variant="ghost"
             className="justify-start w-full px-6 py-4 text-left"
