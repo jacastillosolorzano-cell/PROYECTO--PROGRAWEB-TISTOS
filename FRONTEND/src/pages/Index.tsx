@@ -25,9 +25,7 @@ const Index = () => {
   return (
     <div className="relative min-h-screen bg-background">
       {/* Header con saldo / info de usuario */}
-      <div className="p-4 flex justify-center">
-        <HeaderSaldo />
-      </div>
+      <HeaderSaldo />
 
       {/* Lista de streams / contenido principal */}
       <VideoFeed />

@@ -249,7 +249,7 @@ const Profile = () => {
         <ArrowLeft className="w-5 h-5" />
       </Button>
 
-      <HeaderSaldo />
+      <HeaderSaldo/>
 
       {/* Botón de menú */}
       <Button

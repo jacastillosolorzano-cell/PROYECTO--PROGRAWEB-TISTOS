@@ -163,10 +163,11 @@ const Inbox: React.FC = () => {
           {!searchOpen ? (
             <div className="flex items-center gap-4">
               <h2 className="text-2xl font-bold">Mensajes</h2>
-              <HeaderSaldo />
             </div>
           ) : null}
         </div>
+
+        
 
         <SearchBar
           searchOpen={searchOpen}
@@ -177,7 +178,8 @@ const Inbox: React.FC = () => {
           filteredChats={filteredChats}
         />
       </div>
-
+      
+      <HeaderSaldo />
       {/* CONTENIDO */}
       <div className="px-6 space-y-4">
         {/* Avatares rápidos */}
