@@ -1,7 +1,7 @@
 // src/pages/Create.tsx
 import { useState, useEffect, useRef } from "react";
 import { Button } from "@/components/ui/button";
-import { Music2, X } from "lucide-react";
+import { Music2, X, Copy } from "lucide-react"; // 👈 añadimos Copy
 import BottomNav from "@/components/BottomNav";
 import { useNavigate } from "react-router-dom";
 import io from "socket.io-client";
@@ -16,8 +16,12 @@ const Create = () => {
   const navigate = useNavigate();
   const [isStreaming, setIsStreaming] = useState(false);
   const [streamId, setStreamId] = useState("");
-  const localVideoRef = useRef<HTMLVideoElement>(null);
 
+  // 👇 NUEVO: guardar link y controlar popup
+  const [shareUrl, setShareUrl] = useState<string | null>(null);
+  const [showShareModal, setShowShareModal] = useState(false);
+
+  const localVideoRef = useRef<HTMLVideoElement>(null);
   const peersRef = useRef<{ [key: string]: RTCPeerConnection }>({});
   const streamRef = useRef<MediaStream | null>(null);
 
@@ -91,6 +95,10 @@ const Create = () => {
       setStreamId(data.streamId);
       setIsStreaming(true);
 
+      // 👇 Guardamos el link y abrimos el popup
+      setShareUrl(data.link);
+      setShowShareModal(true);
+
       // Unirse al "room" de este stream
       socket.emit("join_stream", { streamId: data.streamId, role: "streamer" });
 
@@ -127,10 +135,24 @@ const Create = () => {
         });
       });
 
-      alert(`🔗 Comparte este enlace con tus viewers:\n${data.link}`);
+      // ❌ YA NO USAMOS alert PARA EL LINK
+      // alert(`🔗 Comparte este enlace con tus viewers:\n${data.link}`);
     } catch (error) {
       console.error("Error al iniciar stream:", error);
       alert("Error inesperado al iniciar el stream");
+    }
+  };
+
+  // 👇 Handler para copiar al portapapeles
+  const handleCopyLink = async () => {
+    if (!shareUrl) return;
+
+    try {
+      await navigator.clipboard.writeText(shareUrl);
+      alert("Link copiado al portapapeles ✅");
+    } catch (error) {
+      console.error("Error al copiar link:", error);
+      alert("No se pudo copiar, copia el enlace manualmente.");
     }
   };
 
@@ -243,6 +265,40 @@ const Create = () => {
           )}
         </div>
       </div>
+
+      {/* 👇 POPUP con el link y botón de copiar */}
+      {showShareModal && shareUrl && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+          <div className="bg-background rounded-xl p-4 mx-4 w-full max-w-md space-y-3">
+            <div className="flex items-center justify-between mb-2">
+              <h2 className="text-lg font-semibold">Comparte tu stream</h2>
+              <button
+                onClick={() => setShowShareModal(false)}
+                className="p-1"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <p className="text-xs text-muted-foreground break-all">
+              {shareUrl}
+            </p>
+
+            <div className="flex justify-end gap-2 mt-3">
+              <Button
+                variant="outline"
+                onClick={() => setShowShareModal(false)}
+              >
+                Cerrar
+              </Button>
+              <Button onClick={handleCopyLink}>
+                <Copy className="w-4 h-4 mr-1" />
+                Copiar link
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
 
       <div className="mt-auto">
         <BottomNav />
