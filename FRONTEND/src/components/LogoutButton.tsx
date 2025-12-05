@@ -4,10 +4,12 @@ import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { LogOut } from "lucide-react";
 import { BACKEND_URL } from "@/config";
+import { useSaldo } from "@/contexts/SaldoContext";
 
 const LogoutButton: React.FC = () => {
   const navigate = useNavigate();
   const [loading, setLoading] = useState(false);
+  const { setSaldo } = useSaldo();
 
   const handleLogout = async () => {
     if (loading) return;
@@ -29,7 +31,8 @@ const LogoutButton: React.FC = () => {
       localStorage.removeItem("authToken");
       localStorage.removeItem("usuario");
 
-      console.log("Sesión cerrada");
+      setSaldo(0); // Reiniciar saldo en el contexto
+      
       navigate("/login");
     } catch (err) {
       console.error("Error al cerrar sesión:", err);

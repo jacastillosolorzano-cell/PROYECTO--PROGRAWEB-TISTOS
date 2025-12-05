@@ -70,36 +70,35 @@ const ChatView: React.FC = () => {
   //  Cargar puntos desde backend
   // ============================
   useEffect(() => {
-    const fetchPoints = async () => {
-      if (!currentUser) return;
+  const fetchPoints = async () => {
+    const user = getCurrentUser();
+    if (!user) return;
 
-      try {
-        // /usuarios/:id_usuario/progreso devuelve array de progresos
-        const resp = await fetch(
-          `${BACKEND_URL}/usuarios/${currentUser.id_usuario}/progreso`
+    try {
+      const resp = await fetch(
+        `${BACKEND_URL}/usuarios/${user.id_usuario}/progreso`
+      );
+      if (!resp.ok) return;
+      const data: any[] = await resp.json();
+
+      if (chat?.id) {
+        const prog = data.find((p) => p.id_streamer === chat.id);
+        setUserPoints(prog?.puntos_actuales ?? 0);
+      } else {
+        const total = data.reduce(
+          (acc, p) => acc + (p.puntos_actuales ?? 0),
+          0
         );
-        if (!resp.ok) return;
-        const data: any[] = await resp.json();
-
-        // Si el chat está asociado a un streamer concreto, filtramos por él
-        if (chat?.id) {
-          const prog = data.find((p) => p.id_streamer === chat.id);
-          setUserPoints(prog?.puntos_actuales ?? 0);
-        } else {
-          // Si no hay streamer asociado, sumamos todos los puntos
-          const total = data.reduce(
-            (acc, p) => acc + (p.puntos_actuales ?? 0),
-            0
-          );
-          setUserPoints(total);
-        }
-      } catch (e) {
-        console.error("Error obteniendo progreso del usuario:", e);
+        setUserPoints(total);
       }
-    };
+    } catch (e) {
+      console.error("Error obteniendo progreso del usuario:", e);
+    }
+  };
 
-    fetchPoints();
-  }, [currentUser, chat?.id]);
+  fetchPoints();
+}, [chat?.id]);
+
 
   // ============================
   //  Enviar mensaje

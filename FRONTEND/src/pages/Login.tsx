@@ -5,12 +5,13 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Video } from "lucide-react";
 import { BACKEND_URL } from "../config";
+import { useSaldo } from "@/contexts/SaldoContext";
 
 const Login = () => {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
-
+  const { refrescarSaldo } = useSaldo();
   const navigate = useNavigate();
 
 
@@ -78,6 +79,12 @@ const Login = () => {
         console.warn(
           "El usuario no es streamer. Solo podrá ver transmisiones."
         );
+      }
+
+      try {
+        await refrescarSaldo();
+      } catch (e) {
+        console.error("Error refrescando saldo después de login:", e);
       }
 
       navigate("/index");
