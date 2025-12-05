@@ -193,10 +193,7 @@ const Studio = () => {
         const mensaje: string =
           notif.mensaje || "¡Has subido de nivel como streamer! 🎉";
 
-        // abrir popup
-        setLevelUpMessage(mensaje);
-        setLevelUpOpen(true);
-
+   
         // marcar como leída
         if (notif.id_notificacion) {
           await fetch(
