@@ -1,22 +1,43 @@
-// Ruta: src/components/CommentSection.tsx
+// Ruta: src/pages/ventanas/ComentSection.tsx
 
 import { X, Heart } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useEffect, useRef, useState } from "react";
 import { BACKEND_URL } from "@/config";
+import { socket } from "@/lib/socket";
 
-interface Message {
-  id: number;
-  text: string;
-  user: string;
-  likes: number;
-  createdAt: number; // timestamp
-}
+// Si usas NivelChip (opcional, queda bonito):
+// import NivelChip from "@/components/NivelChip";
 
 interface BackendUser {
   id_usuario: string;
   nombre?: string;
   email?: string;
+}
+
+interface CommentSectionProps {
+  onClose: () => void;
+  sessionId?: string;              // id_sesion / streamId
+  onSendMessage?: (text: string) => void; // viene desde VideoCard
+}
+
+interface ChatMessage {
+  streamId: string;
+  userId: string;
+  nombre: string;
+  text: string;
+  timestamp: string;
+  nivelOrden?: number;
+  nivelNombre?: string;
+}
+
+interface LocalMessage {
+  id: string;
+  user: string;
+  nivelNombre?: string;
+  text: string;
+  likes: number;
+  createdAt: number;
 }
 
 const timeAgo = (ts: number) => {
@@ -40,140 +61,111 @@ const getCurrentUser = (): BackendUser | null => {
   }
 };
 
-const CommentSection = ({
-  onClose,
-  sessionId,
-}: {
-  onClose: () => void;
-  sessionId?: string;
-}) => {
+const CommentSection = ({ onClose, sessionId, onSendMessage }: CommentSectionProps) => {
   const [nuevoMensaje, setNuevoMensaje] = useState("");
-  const [mensajes, setMensajes] = useState<Message[]>([
-    {
-      id: 1,
-      text: "¡Qué buen video!",
-      user: "user_ana-nivel 8⭐",
-      likes: 3,
-      createdAt: Date.now() - 1000 * 60 * 5,
-    },
-    {
-      id: 2,
-      text: "La edición está top 🔥",
-      user: "creador123-nivel 10⭐",
-      likes: 5,
-      createdAt: Date.now() - 1000 * 60 * 60,
-    },
-  ]);
+  const [mensajes, setMensajes] = useState<LocalMessage[]>([]);
 
   const CHAR_LIMIT = 220;
+  const currentUser = getCurrentUser();
 
   const inputRef = useRef<HTMLInputElement | null>(null);
   const listRef = useRef<HTMLDivElement | null>(null);
 
-  const currentUser = getCurrentUser();
+  const storageKey = `comments_stream_${sessionId || "global"}`;
 
-  const storageKey = `comments_demo_${sessionId || "global"}`;
-
-  // Cargar comentarios guardados para esta sesión
+  // ======================
+  // CARGAR COMENTARIOS GUARDADOS
+  // ======================
   useEffect(() => {
     try {
       const stored = localStorage.getItem(storageKey);
       if (stored) {
         setMensajes(JSON.parse(stored));
       }
-    } catch {
-      // ignorar errores de localStorage
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    } catch {}
   }, [sessionId]);
 
-  // Guardar comentarios en localStorage al cambiar
+  // GUARDAR AL CAMBIAR
   useEffect(() => {
     try {
       localStorage.setItem(storageKey, JSON.stringify(mensajes));
-    } catch {
-      // ignorar errores de localStorage
-    }
+    } catch {}
   }, [mensajes, storageKey]);
 
+  // AUTO-FOCUS
   useEffect(() => {
     inputRef.current?.focus();
   }, []);
 
+  // AUTO-SCROLL
   useEffect(() => {
     if (!listRef.current) return;
     listRef.current.scrollTop = listRef.current.scrollHeight;
   }, [mensajes]);
 
-  const displayName =
-    currentUser?.nombre ||
-    currentUser?.email ||
-    "ulima123 - nivel 5 ⭐";
+  // ================================
+  // 🔥 ESCUCHAR chat:message DEL SOCKET
+  // ================================
+  useEffect(() => {
+    if (!sessionId) return;
 
-  const handleEnviarMensaje = async () => {
-    if (nuevoMensaje.trim() === "" || nuevoMensaje.length > CHAR_LIMIT) return;
+    const handler = (msg: ChatMessage) => {
+      // Mensajes solo del stream actual
+      if (msg.streamId !== sessionId) return;
 
-    const contenido = nuevoMensaje.trim();
-    const now = Date.now();
+      console.log("💬 Recibido mensaje REAL:", msg);
 
-    const mensajeNuevo: Message = {
-      id: now,
-      text: contenido,
-      user: displayName,
-      likes: 0,
-      createdAt: now,
+      const nuevo: LocalMessage = {
+        id: crypto.randomUUID(),
+        user: msg.nombre,
+        nivelNombre: msg.nivelNombre,
+        text: msg.text,
+        likes: 0,
+        createdAt: Date.now(),
+      };
+
+      setMensajes((prev) => [...prev, nuevo]);
     };
 
-    // 1) Añadir mensaje localmente
-    setMensajes((prev) => {
-      const next = [...prev, mensajeNuevo];
-      try {
-        localStorage.setItem(storageKey, JSON.stringify(next));
-      } catch {
-        // ignore
-      }
-      return next;
-    });
+    socket.on("chat:message", handler);
 
-    // 2) Limpiar input
+    return () => {
+      socket.off("chat:message", handler);
+    };
+  }, [sessionId]);
+
+  // ================================
+  // ENVIAR MENSAJE
+  // ================================
+  const handleEnviarMensaje = async () => {
+    const contenido = nuevoMensaje.trim();
+    if (!contenido || contenido.length > CHAR_LIMIT) return;
+
     setNuevoMensaje("");
 
-    // 3) Enviar al backend sólo si tenemos sesión y usuario logueado
-    if (!sessionId || !currentUser?.id_usuario) {
-      return;
+    // 1) Enviar por socket (viewer → backend → todos)
+    if (onSendMessage) {
+      onSendMessage(contenido);
     }
 
+    // 2) Opcional: registrar en backend HTTP (ya suma puntos también por socket)
+    if (!sessionId || !currentUser?.id_usuario) return;
+
     try {
-      const res = await fetch(
-        `${BACKEND_URL}/sesiones/${sessionId}/mensajes`,
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            id_espectador: currentUser.id_usuario,
-            contenido,
-          }),
-        }
-      );
-
-      if (!res.ok) {
-        console.warn(
-          "Error al enviar mensaje al backend",
-          await res.text()
-        );
-        return;
-      }
-
-      // Si tu backend devuelve algo útil (p.ej. puntos_actuales),
-      // podrías leerlo aquí:
-      // const data = await res.json();
-      // console.log("Mensaje registrado en backend:", data);
+      await fetch(`${BACKEND_URL}/sesiones/${sessionId}/mensajes`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          id_espectador: currentUser.id_usuario,
+          contenido,
+        }),
+      });
     } catch (e) {
-      console.error("Error enviando mensaje:", e);
+      console.error("Error enviando mensaje al backend:", e);
     }
   };
 
-  const handleLike = (id: number) => {
+  const handleLike = (id: string) => {
     setMensajes((prev) =>
       prev.map((m) => (m.id === id ? { ...m, likes: m.likes + 1 } : m))
     );
@@ -190,10 +182,11 @@ const CommentSection = ({
         className="bg-background w-full max-w-2xl h-[75%] rounded-t-2xl grid grid-rows-[auto_1fr_auto] overflow-hidden shadow-xl mb-16"
         onClick={(e) => e.stopPropagation()}
       >
+        {/* HEADER */}
         <header className="flex items-center justify-between border-b p-4">
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 rounded-full bg-muted flex items-center justify-center font-bold">
-              A
+              💬
             </div>
             <div>
               <h3 className="font-bold">Comentarios</h3>
@@ -202,26 +195,21 @@ const CommentSection = ({
               </p>
             </div>
           </div>
+
           <div className="flex items-center gap-2">
             <div className="text-right mr-2">
-              <div className="text-xs text-muted-foreground">
-                Comentando como
-              </div>
+              <div className="text-xs text-muted-foreground">Comentando como</div>
               <div className="text-sm font-medium">
-                {currentUser?.nombre || currentUser?.email || "ulima123"}
+                {currentUser?.nombre || currentUser?.email || "Invitado"}
               </div>
             </div>
-            <Button
-              variant="ghost"
-              size="icon"
-              onClick={onClose}
-              aria-label="Cerrar"
-            >
+            <Button variant="ghost" size="icon" onClick={onClose}>
               <X className="w-5 h-5" />
             </Button>
           </div>
         </header>
 
+        {/* LISTA DE MENSAJES */}
         <div ref={listRef} className="overflow-y-auto p-4 space-y-3">
           {mensajes.length === 0 ? (
             <p className="text-sm text-muted-foreground text-center py-8">
@@ -234,13 +222,25 @@ const CommentSection = ({
                   {m.user.charAt(0).toUpperCase()}
                 </div>
                 <div className="flex-1">
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-2 flex-wrap">
                     <span className="font-semibold text-sm">{m.user}</span>
+
+                    {/* 👇 Aquí mostramos el nivel del usuario (HU2) */}
+                    {m.nivelNombre && (
+                      <span className="text-[10px] font-semibold px-2 py-[2px] rounded-full bg-purple-700/80 text-white">
+                        {m.nivelNombre}
+                      </span>
+                      // Si usas NivelChip:
+                      // <NivelChip nivelNombre={m.nivelNombre} size="sm" />
+                    )}
+
                     <span className="text-xs text-muted-foreground">
                       · {timeAgo(m.createdAt)}
                     </span>
                   </div>
+
                   <div className="text-sm mt-1">{m.text}</div>
+
                   <div className="flex items-center gap-4 mt-2 text-xs text-muted-foreground">
                     <button
                       onClick={() => handleLike(m.id)}
@@ -254,7 +254,6 @@ const CommentSection = ({
                         setNuevoMensaje(`@${m.user} `);
                         inputRef.current?.focus();
                       }}
-                      className="text-muted-foreground"
                     >
                       Responder
                     </button>
@@ -265,10 +264,8 @@ const CommentSection = ({
           )}
         </div>
 
+        {/* INPUT */}
         <footer className="flex items-center gap-2 border-t p-4 pb-6">
-          <div className="w-10 h-10 rounded-full bg-muted flex items-center justify-center font-bold">
-            J
-          </div>
           <div className="flex-1">
             <input
               ref={inputRef}
@@ -278,28 +275,22 @@ const CommentSection = ({
               onChange={(e) => setNuevoMensaje(e.target.value)}
               onKeyDown={(e) => e.key === "Enter" && handleEnviarMensaje()}
               className="w-full bg-muted border rounded-full px-4 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-primary"
-              aria-label="Añadir comentario"
               maxLength={CHAR_LIMIT}
             />
             <div className="flex justify-between text-xs mt-1 text-muted-foreground">
               <span
-                className={`${
+                className={
                   nuevoMensaje.length > CHAR_LIMIT ? "text-rose-500" : ""
-                }`}
+                }
               >
                 {nuevoMensaje.length}/{CHAR_LIMIT}
               </span>
-              <span className="text-muted-foreground">
-                Pulsa Enter para enviar
-              </span>
+              <span>Pulsa Enter para enviar</span>
             </div>
           </div>
           <Button
             onClick={handleEnviarMensaje}
-            className="shrink-0"
-            disabled={
-              nuevoMensaje.trim() === "" || nuevoMensaje.length > CHAR_LIMIT
-            }
+            disabled={!nuevoMensaje.trim() || nuevoMensaje.length > CHAR_LIMIT}
           >
             Publicar
           </Button>

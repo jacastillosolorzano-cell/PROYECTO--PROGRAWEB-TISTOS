@@ -1,3 +1,7 @@
+// ===============================================================
+//                         STUDIO.TSX FINAL
+// ===============================================================
+
 import { useNavigate } from "react-router-dom";
 import { useState, useEffect } from "react";
 import { io } from "socket.io-client";
@@ -16,6 +20,7 @@ import { toast } from "sonner";
 import StreamerProgress from "@/components/StreamerProgress";
 import OverlayAnimator from "@/components/OverlayAnimator";
 import { BACKEND_URL } from "@/config";
+import LevelUpAlert from "@/components/LevelUpAlert";
 
 const posts = [
   {
@@ -38,96 +43,88 @@ const posts = [
   },
 ];
 
-// Helper para obtener headers con token si existe
+// ------------------------------------------
+// Helper para TOKEN
+// ------------------------------------------
 const getAuthHeaders = (extra: Record<string, string> = {}) => {
   const token = localStorage.getItem("authToken");
   const headers: Record<string, string> = { ...extra };
-  if (token) {
-    headers.Authorization = `Bearer ${token}`;
-  }
+  if (token) headers.Authorization = `Bearer ${token}`;
   return headers;
 };
 
 const Studio = () => {
   const navigate = useNavigate();
-  const [tab, setTab] = useState<"inspiracion" | "monetizacion">(
-    "inspiracion"
-  );
+
+  const [tab, setTab] = useState("monetizacion");
   const [regalos, setRegalos] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
   const [showOverlay, setShowOverlay] = useState(false);
+
+  // ⭐ Popup de subir nivel streamer
+  const [levelUpOpen, setLevelUpOpen] = useState(false);
+  const [levelUpMessage, setLevelUpMessage] = useState("");
+
   const [nuevoRegalo, setNuevoRegalo] = useState({
     nombre: "",
     costo: "",
     puntos: "",
   });
+
   const [editId, setEditId] = useState<string | null>(null);
-  const [loading, setLoading] = useState(true);
 
-  // ===========================
-  //   OBTENER USUARIO ACTUAL
-  // ===========================
+  // ===========================================================
+  //  USUARIO ACTUAL
+  // ===========================================================
   const rawUsuario = localStorage.getItem("usuario");
-
   let usuarioActual: any = null;
+
   try {
     usuarioActual = rawUsuario ? JSON.parse(rawUsuario) : null;
-  } catch (e) {
-    console.error("Error parseando usuario desde localStorage:", e);
+  } catch {
     usuarioActual = null;
   }
 
-  // El id de streamer puede venir como id_usuario (backend) o id (frontend antiguo)
   const id_streamer: string | undefined =
     usuarioActual?.id_usuario ?? usuarioActual?.id;
 
-  console.log("usuarioActual Studio:", usuarioActual);
-  console.log("id_streamer Studio:", id_streamer);
+  // ===========================================================
+  //  ⭐ Horas de transmisión totales
+  // ===========================================================
+  const [horas, setHoras] = useState(0);
+  const [minutos, setMinutos] = useState(0);
 
-  // ============================================
-  // Cambiar rol a Streamer y cargar regalos
-  // ============================================
   useEffect(() => {
-    const ensureStreamerAndLoad = async () => {
-      if (!id_streamer) {
-        console.warn("No hay id_streamer, no se puede cargar Studio");
-        toast.error(
-          "No se encontró tu usuario streamer. Vuelve a iniciar sesión."
-        );
-        setLoading(false);
-        return;
-      }
+    if (!id_streamer) return;
 
+    const fetchPerfil = async () => {
       try {
-        // Consultar al backend si el usuario existe y es STREAMER
-        const check = await fetch(`${BACKEND_URL}/usuarios/${id_streamer}`, {
-          headers: getAuthHeaders(),
-        });
+        const resp = await fetch(
+          `${BACKEND_URL}/streamers/perfil/${id_streamer}`,
+          { headers: getAuthHeaders() }
+        );
 
-        if (check.status === 200) {
-          const u = await check.json();
-          if (u.rol === "STREAMER") {
-            await cargarRegalos(id_streamer);
-            return;
-          }
+        if (!resp.ok) {
+          console.warn("No se encontró perfil streamer");
+          return;
         }
 
-        // Si no es streamer o no existe, intentar cambiar rol
-        await cambiarARolStreamer(id_streamer);
-        await cargarRegalos(id_streamer);
+        const data = await resp.json();
+        const totalMin = data.horas_transmitidas_total ?? 0;
+
+        setHoras(Math.floor(totalMin / 60));
+        setMinutos(totalMin % 60);
       } catch (err) {
-        console.error("Error validando streamer:", err);
-        toast.error("No fue posible verificar el streamer");
-        setLoading(false);
+        console.error("Error obteniendo horas transmitidas:", err);
       }
     };
 
-    ensureStreamerAndLoad();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    fetchPerfil();
   }, [id_streamer]);
 
-  // ============================================
-  //   Socket.IO: escuchar regalos en tiempo real
-  // ============================================
+  // ===========================================================
+  //   SOCKET: escuchar regalos
+  // ===========================================================
   useEffect(() => {
     if (!id_streamer) return;
 
@@ -135,11 +132,9 @@ const Studio = () => {
 
     socket.on("connect", () => {
       console.log("Socket conectado (frontend Studio):", socket.id);
-      // Unirse a un "room" propio del streamer
       socket.emit("join_streamer_room", id_streamer);
     });
 
-    // Evento que enviará el backend cuando reciba un regalo
     socket.on("gift_received", (data: any) => {
       const detail = {
         type: "gift",
@@ -148,114 +143,158 @@ const Studio = () => {
         points: data.puntos_otorgados || data.puntos || 0,
         multiplier: data.cantidad || 1,
       };
-      window.dispatchEvent(
-        new CustomEvent("tistos:overlay", { detail })
-      );
+      window.dispatchEvent(new CustomEvent("tistos:overlay", { detail }));
     });
 
     socket.on("disconnect", () => {
       console.log("Socket desconectado (frontend Studio)");
     });
 
+    // cleanup
     return () => {
       socket.disconnect();
     };
   }, [id_streamer]);
 
-  const cambiarARolStreamer = async (id_streamer_param: string) => {
-    try {
-      const resp = await fetch(
-        `${BACKEND_URL}/usuarios/${id_streamer_param}/rol`,
-        {
-          method: "PUT",
-          headers: getAuthHeaders({ "Content-Type": "application/json" }),
-          body: JSON.stringify({ rol: "STREAMER" }),
-        }
-      );
+  // ===========================================================
+  //  ⭐ POPUP: notificación de subida de nivel streamer
+  // ===========================================================
+  useEffect(() => {
+    const token = localStorage.getItem("authToken");
+    if (!token) return;
 
-      if (resp.status === 200) {
-        const usuarioActualizado = await resp.json();
-
-        // Guardamos como "usuario" (backend) y "tistos_current_user" para compatibilidad
-        localStorage.setItem(
-          "usuario",
-          JSON.stringify(usuarioActualizado)
+    const fetchLevelNotifications = async () => {
+      try {
+        const res = await fetch(
+          `${BACKEND_URL}/notificaciones?tipo=NIVEL_STREAMER_SUBIDO&soloNoLeidas=true`,
+          {
+            headers: {
+              Authorization: `Bearer ${token}`,
+            },
+          }
         );
+
+        if (!res.ok) return;
+
+        const data = await res.json();
+        if (!Array.isArray(data) || data.length === 0) return;
+
+        const notif = data[0];
+
+        const mensaje: string =
+          notif.mensaje || "¡Has subido de nivel como streamer! 🎉";
+
+        // abrir popup
+        setLevelUpMessage(mensaje);
+        setLevelUpOpen(true);
+
+        // marcar como leída
+        if (notif.id_notificacion) {
+          await fetch(
+            `${BACKEND_URL}/notificaciones/${notif.id_notificacion}/leida`,
+            {
+              method: "PUT",
+              headers: {
+                Authorization: `Bearer ${token}`,
+              },
+            }
+          );
+        }
+      } catch (err) {
+        console.error("Error consultando notificaciones de nivel:", err);
+      }
+    };
+
+    fetchLevelNotifications();
+  }, []);
+
+  // ===========================================================
+  // CAMBIAR A STREAMER (si no lo es)
+  // ===========================================================
+  const cambiarARolStreamer = async (id: string) => {
+    try {
+      const resp = await fetch(`${BACKEND_URL}/usuarios/${id}/rol`, {
+        method: "PUT",
+        headers: getAuthHeaders({ "Content-Type": "application/json" }),
+        body: JSON.stringify({ rol: "STREAMER" }),
+      });
+
+      if (resp.ok) {
+        const usuarioActualizado = await resp.json();
+        localStorage.setItem("usuario", JSON.stringify(usuarioActualizado));
         localStorage.setItem(
           "tistos_current_user",
           JSON.stringify(usuarioActualizado)
         );
-
-        toast.success("¡Bienvenido al modo Streamer!");
+        toast.success("Modo streamer activado");
       } else {
-        console.warn(
-          "Error al cambiar al modo streamer, status:",
-          resp.status,
-          await resp.text()
-        );
-        toast.error("Error al cambiar al modo streamer");
+        toast.error("No se pudo activar modo streamer");
       }
-    } catch (error) {
-      toast.error("Error al cambiar al modo streamer");
-      console.error(error);
+    } catch (err) {
+      console.error(err);
+      toast.error("Error al activar modo streamer");
     }
   };
 
-  const cargarRegalos = async (id_streamer_param: string) => {
+  // ===========================================================
+  // CARGAR REGALOS DEL STREAMER
+  // ===========================================================
+  const cargarRegalos = async (id: string) => {
     try {
       setLoading(true);
+
       const resp = await fetch(
-        `${BACKEND_URL}/regalos/streamer/${id_streamer_param}`,
-        {
-          headers: getAuthHeaders(),
-        }
+        `${BACKEND_URL}/regalos/streamer/${id}`,
+        { headers: getAuthHeaders() }
       );
 
-      if (resp.status === 200) {
-        const data = await resp.json();
-        setRegalos(data);
-      } else {
-        console.warn(
-          "Error al obtener regalos, status:",
-          resp.status,
-          await resp.text()
-        );
+      if (resp.ok) {
+        setRegalos(await resp.json());
       }
-    } catch (error) {
-      toast.error("Error al cargar los regalos");
-      console.error(error);
+    } catch (err) {
+      toast.error("Error cargando regalos");
     } finally {
       setLoading(false);
     }
   };
 
-  // Simula recibir un regalo localmente (solo para test visual)
-  const recibirRegalo = (nombre: string, usuario: string) => {
-    setShowOverlay(true);
-    setTimeout(() => setShowOverlay(false), 2000);
-  };
+  // ===========================================================
+  // INICIALIZAR STUDIO (rol + regalos)
+  // ===========================================================
+  useEffect(() => {
+    const init = async () => {
+      if (!id_streamer) return;
 
-  // ============================================
-  //   Crear o editar regalo
-  // ============================================
+      const check = await fetch(`${BACKEND_URL}/usuarios/${id_streamer}`, {
+        headers: getAuthHeaders(),
+      });
+
+      if (check.ok) {
+        const data = await check.json();
+        if (data.rol !== "STREAMER") await cambiarARolStreamer(id_streamer);
+      } else {
+        await cambiarARolStreamer(id_streamer);
+      }
+
+      await cargarRegalos(id_streamer);
+    };
+
+    init();
+  }, [id_streamer]);
+
+  // ===========================================================
+  // GUARDAR / EDITAR REGALO
+  // ===========================================================
   const handleSaveRegalo = async (e: React.FormEvent) => {
     e.preventDefault();
 
-    if (!id_streamer) {
-      toast.error(
-        "No se encontró tu usuario streamer. Vuelve a iniciar sesión."
-      );
-      return;
-    }
-
     if (!nuevoRegalo.nombre || !nuevoRegalo.costo || !nuevoRegalo.puntos) {
-      toast.error("Completa todos los campos");
+      toast.error("Todos los campos son obligatorios");
       return;
     }
 
     try {
       if (editId) {
-        // Editar regalo existente
         const resp = await fetch(`${BACKEND_URL}/regalos/${editId}`, {
           method: "PUT",
           headers: getAuthHeaders({ "Content-Type": "application/json" }),
@@ -266,63 +305,40 @@ const Studio = () => {
           }),
         });
 
-        if (resp.status === 200) {
+        if (resp.ok) {
           toast.success("Regalo actualizado");
-          setEditId(null);
-          await cargarRegalos(id_streamer);
         } else {
-          console.warn(
-            "Error al actualizar regalo, status:",
-            resp.status,
-            await resp.text()
-          );
-          toast.error("Error al actualizar el regalo");
+          toast.error("Error al actualizar regalo");
         }
       } else {
-        // Crear nuevo regalo
-        const payload = {
-          nombre: nuevoRegalo.nombre,
-          costo_monedas: Number(nuevoRegalo.costo),
-          puntos_otorgados: Number(nuevoRegalo.puntos),
-          id_streamer,
-        };
-
-        console.log("Payload /regalos/crear:", payload);
-
         const resp = await fetch(`${BACKEND_URL}/regalos/crear`, {
           method: "POST",
           headers: getAuthHeaders({ "Content-Type": "application/json" }),
-          body: JSON.stringify(payload),
+          body: JSON.stringify({
+            id_streamer,
+            nombre: nuevoRegalo.nombre,
+            costo_monedas: Number(nuevoRegalo.costo),
+            puntos_otorgados: Number(nuevoRegalo.puntos),
+          }),
         });
 
-        if (resp.status === 200) {
+        if (resp.ok) {
           toast.success("Regalo creado");
-          await cargarRegalos(id_streamer);
         } else {
-          const txt = await resp.text();
-          console.error("Error backend /regalos/crear:", txt);
-          toast.error("Error al crear el regalo");
+          toast.error("Error al crear regalo");
         }
       }
 
       setNuevoRegalo({ nombre: "", costo: "", puntos: "" });
-    } catch (error) {
-      toast.error("Error al guardar el regalo");
-      console.error(error);
+      if (id_streamer) await cargarRegalos(id_streamer);
+    } catch (err) {
+      toast.error("Error al guardar regalo");
     }
   };
 
-  // Editar regalo
-  const handleEdit = (regalo: any) => {
-    setEditId(regalo.id_regalo);
-    setNuevoRegalo({
-      nombre: regalo.nombre,
-      costo: regalo.costo_monedas.toString(),
-      puntos: regalo.puntos_otorgados.toString(),
-    });
-  };
-
-  // Eliminar regalo
+  // ===========================================================
+  // ELIMINAR REGALO
+  // ===========================================================
   const handleDelete = async (id_regalo: string) => {
     try {
       const resp = await fetch(`${BACKEND_URL}/regalos/${id_regalo}`, {
@@ -330,28 +346,42 @@ const Studio = () => {
         headers: getAuthHeaders(),
       });
 
-      if (resp.status === 200) {
+      if (resp.ok) {
         toast.success("Regalo eliminado");
-        if (id_streamer) {
-          await cargarRegalos(id_streamer);
-        }
+        if (id_streamer) cargarRegalos(id_streamer);
       } else {
-        console.warn(
-          "Error al eliminar regalo, status:",
-          resp.status,
-          await resp.text()
-        );
-        toast.error("Error al eliminar el regalo");
+        toast.error("Error al eliminar regalo");
       }
-    } catch (error) {
-      toast.error("Error al eliminar el regalo");
-      console.error(error);
+    } catch {
+      toast.error("Error al eliminar");
     }
   };
 
+  // ===========================================================
+  // EDITAR REGALO
+  // ===========================================================
+  const handleEdit = (r: any) => {
+    setEditId(r.id_regalo);
+    setNuevoRegalo({
+      nombre: r.nombre,
+      costo: String(r.costo_monedas),
+      puntos: String(r.puntos_otorgados),
+    });
+  };
+
+  // ===========================================================
+  // RENDER
+  // ===========================================================
   return (
     <div className="min-h-screen bg-background relative pb-20">
-      {/* Botón de regresar */}
+      {/* Popup de subida de nivel streamer */}
+      <LevelUpAlert
+        open={levelUpOpen}
+        message={levelUpMessage}
+        onClose={() => setLevelUpOpen(false)}
+      />
+
+      {/* Back */}
       <Button
         variant="ghost"
         size="icon"
@@ -365,121 +395,40 @@ const Studio = () => {
         Tistos Studio
       </h2>
 
-      {/* Overlay por eventos de socket */}
       <OverlayAnimator />
-
-      {/* Progreso de streamer (lo conectaremos al backend en el componente) */}
       <StreamerProgress />
 
-      {/* Estadísticas (por ahora mock) */}
-      <div className="max-w-xl mx-auto bg-card rounded-xl p-6 mb-6 shadow flex flex-col gap-4">
+      {/* ⭐ CARD DE ESTADÍSTICAS */}
+      <div className="max-w-xl mx-auto bg-card rounded-xl p-6 mb-6 shadow flex flex-col gap-2">
         <div className="flex items-center justify-between mb-2">
           <span className="font-bold text-lg">Estadísticas</span>
-          <Button variant="link" size="sm">
-            Ver todo
-          </Button>
         </div>
-        <div className="grid grid-cols-3 gap-4 text-center">
+
+        <div className="grid grid-cols-3 gap-4 ">
+          {/* ⭐️ Horas transmitidas reales */}
           <div>
-            <span className="font-bold text-xl">0</span>
+            <span className="font-bold text-xl">
+              {horas}h {minutos}m
+            </span>
             <div className="text-xs text-muted-foreground">
-              Visualizaciones
+              Horas transmitidas
             </div>
-            <div className="text-xs text-muted-foreground">0% 7d</div>
-          </div>
-          <div>
-            <span className="font-bold text-xl">0</span>
-            <div className="text-xs text-muted-foreground">
-              Seguidores netos
-            </div>
-            <div className="text-xs text-muted-foreground">0% 7d</div>
-          </div>
-          <div>
-            <span className="font-bold text-xl">0</span>
-            <div className="text-xs text-muted-foreground">Me gusta</div>
-            <div className="text-xs text-muted-foreground">0% 7d</div>
           </div>
         </div>
       </div>
 
-      {/* Herramientas */}
-      <div className="max-w-xl mx-auto flex justify-between items-center mb-3 gap-2">
-        <Button variant="outline" size="sm" className="flex-1 gap-2">
-          <UserCheck className="w-4 h-4" /> Verificar cuenta
-        </Button>
-        <Button variant="outline" size="sm" className="flex-1 gap-2">
-          <GraduationCap className="w-4 h-4" /> Academia de creadores
-        </Button>
-      </div>
-      <div className="max-w-xl mx-auto flex justify-between items-center mb-6 gap-2">
-        <Button variant="outline" size="sm" className="flex-1 gap-2">
-          <Flame className="w-4 h-4" /> Promocionar
-        </Button>
-      </div>
-
-      {/* Tabs (por ahora solo monetización) */}
-      <div className="max-w-xl mx-auto flex mb-4 gap-2">
-        <Button
-          variant={tab === "monetizacion" ? "secondary" : "outline"}
-          size="sm"
-          className="flex-1"
-          onClick={() => setTab("monetizacion")}
-        >
-          Monetización
-        </Button>
-      </div>
-
-      {/* Filtros (mock) */}
-      <div className="max-w-xl mx-auto flex gap-2 mb-6">
-        <Button variant="outline" size="sm">
-          Trending
-        </Button>
-        <Button variant="outline" size="sm">
-          Recommended
-        </Button>
-      </div>
-
-      {/* Lista de posts simulados */}
-      <div className="max-w-xl mx-auto mb-8">
-        {posts.map((post, idx) => (
-          <div
-            key={post.id}
-            className="flex items-center gap-3 py-3 border-b border-border"
-          >
-            <span className="font-bold text-primary">{idx + 1}</span>
-            <img
-              src={post.img}
-              alt={post.usuario}
-              className="w-12 h-12 rounded-lg object-cover"
-            />
-            <div className="flex-1">
-              <div className="font-semibold">{post.texto}</div>
-              <div className="text-xs text-muted-foreground flex gap-2">
-                <span>👁️ {post.vistas}</span>
-                <span>❤️ {post.likes}</span>
-              </div>
-            </div>
-            <Button
-              variant="ghost"
-              size="icon"
-              onClick={() => recibirRegalo("Rosa", post.usuario)}
-            >
-              <Gift className="w-5 h-5 text-primary" />
-            </Button>
-          </div>
-        ))}
-      </div>
-
-      {/* Gestión de regalos */}
+      {/* REGALOS */}
       <div className="max-w-xl mx-auto bg-card rounded-xl p-6 mb-8">
         <h3 className="font-bold mb-4 flex items-center gap-2">
           <Gift className="w-5 h-5 text-primary" /> Regalos del canal
         </h3>
+
+        {/* Form */}
         <form onSubmit={handleSaveRegalo} className="flex gap-2 mb-4">
           <input
             type="text"
             placeholder="Nombre"
-            className="border rounded w-15 bg-background px-2 py-1"
+            className="border rounded px-2 py-1 bg-background text-foreground"
             value={nuevoRegalo.nombre}
             onChange={(e) =>
               setNuevoRegalo({ ...nuevoRegalo, nombre: e.target.value })
@@ -488,7 +437,7 @@ const Studio = () => {
           <input
             type="number"
             placeholder="Costo"
-            className="border rounded w-12 bg-background px-2 py-1"
+            className="border rounded px-2 py-1 w-20 bg-background text-foreground"
             value={nuevoRegalo.costo}
             onChange={(e) =>
               setNuevoRegalo({ ...nuevoRegalo, costo: e.target.value })
@@ -497,69 +446,46 @@ const Studio = () => {
           <input
             type="number"
             placeholder="Puntos"
-            className="border rounded px-2 py-1 w-20 bg-background"
+            className="border rounded px-2 py-1 w-20 bg-background text-foreground"
             value={nuevoRegalo.puntos}
             onChange={(e) =>
               setNuevoRegalo({ ...nuevoRegalo, puntos: e.target.value })
             }
           />
           <Button type="submit" size="sm" variant="secondary">
-            {editId ? (
-              <Edit className="w-4 h-4" />
-            ) : (
-              <PlusCircle className="w-4 h-4" />
-            )}
+            {editId ? <Edit className="w-4 h-4" /> : <PlusCircle className="w-4 h-4" />}
           </Button>
         </form>
-        <div>
-          {loading ? (
-            <p className="text-muted-foreground">Cargando regalos...</p>
-          ) : regalos.length === 0 ? (
-            <p className="text-muted-foreground">
-              No hay regalos. Crea uno para comenzar.
-            </p>
-          ) : (
-            regalos.map((regalo) => (
-              <div
-                key={regalo.id_regalo}
-                className="flex items-center gap-2 mb-2"
-              >
-                <span className="font-semibold">{regalo.nombre}</span>
-                <span className="text-xs text-muted-foreground">
-                  Costo: {regalo.costo_monedas}
-                </span>
-                <span className="text-xs text-muted-foreground">
-                  Puntos: {regalo.puntos_otorgados}
-                </span>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  onClick={() => handleEdit(regalo)}
-                >
-                  <Edit className="w-4 h-4" />
-                </Button>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  onClick={() => handleDelete(regalo.id_regalo)}
-                >
-                  <Trash2 className="w-4 h-4 text-red-500" />
-                </Button>
-              </div>
-            ))
-          )}
-        </div>
-      </div>
 
-      {/* Overlay animado de prueba local */}
-      {showOverlay && (
-        <div className="fixed inset-0 flex items-center justify-center z-50 pointer-events-none">
-          <div className="bg-primary text-white px-8 py-6 rounded-2xl shadow-lg animate-bounce text-center text-xl font-bold">
-            ¡Has recibido un regalo!
-            <div className="mt-2 text-base">🎁 Gracias por tu apoyo</div>
-          </div>
-        </div>
-      )}
+        {/* Lista de regalos */}
+        {loading ? (
+          <p>Cargando...</p>
+        ) : regalos.length === 0 ? (
+          <p>No hay regalos creados.</p>
+        ) : (
+          regalos.map((r) => (
+            <div key={r.id_regalo} className="flex items-center gap-2 mb-2">
+              <span className="font-semibold">{r.nombre}</span>
+              <span className="text-xs text-muted-foreground">
+                Costo: {r.costo_monedas}
+              </span>
+              <span className="text-xs text-muted-foreground">
+                Puntos: {r.puntos_otorgados}
+              </span>
+              <Button size="icon" variant="ghost" onClick={() => handleEdit(r)}>
+                <Edit className="w-4 h-4" />
+              </Button>
+              <Button
+                size="icon"
+                variant="ghost"
+                onClick={() => handleDelete(r.id_regalo)}
+              >
+                <Trash2 className="w-4 h-4 text-red-500" />
+              </Button>
+            </div>
+          ))
+        )}
+      </div>
     </div>
   );
 };

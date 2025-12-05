@@ -55,6 +55,28 @@ router.get(
         .json({ error: "Error al obtener estadísticas de streamer" });
     }
   }
+
+  
 );
+// Obtener perfil del streamer (horas transmitidas, nivel, etc.)
+router.get("/perfil/:id_streamer", async (req, res) => {
+  try {
+    const { id_streamer } = req.params;
+
+    const perfil = await prisma.perfilStreamer.findUnique({
+      where: { id_usuario: id_streamer },
+    });
+
+    if (!perfil) {
+      return res.status(404).json({ error: "Perfil no encontrado" });
+    }
+
+    return res.json(perfil);
+  } catch (err) {
+    console.error("Error al obtener perfil del streamer:", err);
+    return res.status(500).json({ error: "Error interno al obtener perfil" });
+  }
+});
+
 
 export default router;

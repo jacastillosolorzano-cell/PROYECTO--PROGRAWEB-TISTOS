@@ -1,190 +1,257 @@
 // src/components/StreamerProgress.tsx
-import React, { useEffect, useRef, useState } from "react";
-import ConfigPanel from "./ConfigPanel";
-import ProgressBar from "./ProgressBar";
-import TotalHours from "./TotalHours";
-import LevelUpAlert from "./LevelUpAlert";
+import React, { useEffect, useMemo, useState } from "react";
 import { BACKEND_URL } from "@/config";
+import ProgressBar from "@/components/ProgressBar";
+import { toast } from "sonner";
 
-const AUTO_REFRESH_MS = 30000; // refrescar cada 30s desde el backend
+type PerfilStreamer = {
+  id_usuario: string;
+  horas_transmitidas_total: number; // minutos acumulados
+  nivel?: {
+    orden: number;
+    nombre_nivel: string;
+  } | null;
+};
 
 const StreamerProgress: React.FC = () => {
-  const [hoursRequired, setHoursRequired] = useState<number>(20); // horas para subir de nivel (configurable)
-  const [hoursDone, setHoursDone] = useState<number>(0);          // horas transmitidas (vienen del backend)
-  const [showLevelUp, setShowLevelUp] = useState(false);
-  const prevLevelRef = useRef<number>(0);
+  const [perfil, setPerfil] = useState<PerfilStreamer | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
-  // ================================
-  //   CARGAR PERFIL STREAMER (BACKEND)
-  // ================================
+  // Horas requeridas por nivel (configurable en el UI)
+  const [horasRequeridas, setHorasRequeridas] = useState<number>(() => {
+    const saved = localStorage.getItem("streamer_hours_required");
+    const n = saved ? Number(saved) : 20;
+    return Number.isNaN(n) || n <= 0 ? 20 : n;
+  });
+
+  // ==========================================================
+  //   CARGAR PERFIL DEL STREAMER DESDE BACKEND
+  // ==========================================================
   useEffect(() => {
+    const rawUsuario = localStorage.getItem("usuario");
+    if (!rawUsuario) {
+      setError("No se encontró usuario en sesión");
+      setLoading(false);
+      return;
+    }
+
+    let usuario: any;
+    try {
+      usuario = JSON.parse(rawUsuario);
+    } catch (e) {
+      console.error("Error parseando usuario:", e);
+      setError("Error leyendo datos de usuario");
+      setLoading(false);
+      return;
+    }
+
+    const id_streamer: string | undefined =
+      usuario.id_usuario ?? usuario.id;
+
+    if (!id_streamer) {
+      setError("No se encontró id de streamer");
+      setLoading(false);
+      return;
+    }
+
     const fetchPerfil = async () => {
       try {
-        const token = localStorage.getItem("authToken");
-        if (!token) {
-          console.warn("No hay authToken, no se puede leer /streamers/perfil");
+        setLoading(true);
+        setError(null);
+
+        const resp = await fetch(
+          `${BACKEND_URL}/streamers/perfil/${id_streamer}`
+        );
+
+        if (resp.status === 404) {
+          // Si aún no tiene perfil, asumimos 0 minutos
+          setPerfil({
+            id_usuario: id_streamer,
+            horas_transmitidas_total: 0,
+            nivel: null,
+          });
+          setLoading(false);
           return;
         }
-
-        const resp = await fetch(`${BACKEND_URL}/streamers/perfil`, {
-          headers: {
-            Authorization: `Bearer ${token}`,
-          },
-        });
 
         if (!resp.ok) {
-          console.warn(
-            "No se pudo obtener perfil streamer:",
-            resp.status,
-            await resp.text()
-          );
+          console.warn("Error al obtener perfil:", resp.status);
+          setError("No se pudo cargar el perfil del streamer");
+          setLoading(false);
           return;
         }
 
-        const data: any = await resp.json();
-        // depende de cómo devolviste en el backend, cubrimos 2 casos:
-        // 1) { perfil: {...} }
-        // 2) {...directamente...}
-        const perfil = data.perfil ?? data;
-
-        // En la BD guardamos minutos transmitidos, los convertimos a horas:
-        const minutosTotales: number = perfil.horas_transmitidas_total ?? 0;
-        const horas = minutosTotales / 60;
-        setHoursDone(horas);
-
-        // Si tu backend ya manda info del nivel, puedes usarla para hoursRequired
-        // Por ejemplo: perfil.nivel?.horas_por_nivel
-        if (
-          perfil.nivel &&
-          typeof perfil.nivel.horas_por_nivel === "number"
-        ) {
-          setHoursRequired(perfil.nivel.horas_por_nivel);
-        }
-      } catch (error) {
-        console.error("Error al cargar perfil streamer:", error);
+        const data = (await resp.json()) as PerfilStreamer;
+        setPerfil(data);
+      } catch (e) {
+        console.error("Error fetch perfil streamer:", e);
+        setError("Error de conexión al cargar el perfil");
+      } finally {
+        setLoading(false);
       }
     };
 
-    // Primera carga
     fetchPerfil();
-    // Refresco periódico mientras estés en la pantalla
-    const id = window.setInterval(fetchPerfil, AUTO_REFRESH_MS);
-    return () => window.clearInterval(id);
   }, []);
 
-  // ================================
-  //   CÁLCULO DE NIVEL
-  // ================================
-  const level = Math.max(
-    1,
-    Math.floor(hoursDone / Math.max(1, hoursRequired)) + 1
-  );
+  // ==========================================================
+  //   DERIVADOS: HORAS, NIVEL, PORCENTAJE
+  // ==========================================================
+  const totalMinutos = perfil?.horas_transmitidas_total ?? 0;
+  const totalHoras = useMemo(() => totalMinutos / 60, [totalMinutos]);
 
-  // Detectar cuando sube de nivel para mostrar el modal
-  useEffect(() => {
-    const prev =
-      prevLevelRef.current ||
-      Math.max(
-        1,
-        Math.floor(
-          Math.max(0, hoursDone - 0.01) / Math.max(1, hoursRequired)
-        ) + 1
-      );
+  const nivelActual = useMemo(() => {
+    if (perfil?.nivel?.orden) return perfil.nivel.orden;
+    // Si no viene nivel del backend, calculamos algo simple
+    if (horasRequeridas <= 0) return 1;
+    return Math.floor(totalHoras / horasRequeridas) + 1;
+  }, [perfil, totalHoras, horasRequeridas]);
 
-    if (level > prev) {
-      setShowLevelUp(true);
-    }
+  // Formateo para mostrar horas "2h 11m"
+  const horasEnteras = Math.floor(totalHoras);
+  const minutosRestantes = Math.round((totalHoras - horasEnteras) * 60);
 
-    prevLevelRef.current = level;
-  }, [level, hoursDone, hoursRequired]);
+  // Guardar en localStorage cuando se cambie la progresión
+  const handleChangeHorasRequeridas = (value: number) => {
+    if (Number.isNaN(value) || value <= 0) return;
+    setHorasRequeridas(value);
+    localStorage.setItem("streamer_hours_required", String(value));
+  };
+useEffect(() => {
+    const token = localStorage.getItem("authToken");
+    if (!token) return;
 
-  // ================================
-  //   RENDER
-  // ================================
-  // Progreso dentro del nivel actual: resto de horas
-  const hoursWithinLevel =
-    hoursRequired > 0 ? hoursDone % hoursRequired : 0;
+    const fetchLevelNotifications = async () => {
+      try {
+        const res = await fetch(
+          `${BACKEND_URL}/notificaciones?tipo=NIVEL_STREAMER_SUBIDO&soloNoLeidas=true`,
+          {
+            headers: {
+              Authorization: `Bearer ${token}`,
+            },
+          }
+        );
 
+        if (!res.ok) return;
+        const data = await res.json();
+
+        if (!Array.isArray(data) || data.length === 0) return;
+
+        const notif = data[0]; // la más reciente
+        const mensaje: string =
+          notif.mensaje || "¡Has subido de nivel como streamer! 🎉";
+
+        // Mostrar toast al entrar al Studio
+        toast.success(mensaje);
+
+        // Marcar como leída para no repetir aviso
+        if (notif.id_notificacion) {
+          await fetch(
+            `${BACKEND_URL}/notificaciones/${notif.id_notificacion}/leida`,
+            {
+              method: "PUT",
+              headers: {
+                Authorization: `Bearer ${token}`,
+              },
+            }
+          );
+        }
+      } catch (err) {
+        console.error("Error consultando notificaciones de nivel:", err);
+      }
+    };
+
+    fetchLevelNotifications();
+  }, []);
+  
   return (
-    <section style={{ maxWidth: 920, margin: "0 auto", padding: "20px" }}>
-      <div
-        style={{
-          borderRadius: 18,
-          padding: 28,
-          background: "#151515",
-          boxShadow:
-            "0 0 60px rgba(124,58,237,0.12), inset 0 0 40px rgba(124,58,237,0.04)",
-          border: "1px solid rgba(120,60,160,0.12)",
-        }}
-      >
-        {/* Header */}
-        <div
-          style={{
-            display: "flex",
-            alignItems: "center",
-            gap: 12,
-            marginBottom: 18,
-          }}
-        >
-          <div
-            style={{
-              width: 36,
-              height: 36,
-              borderRadius: 8,
-              background: "#222",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-            }}
-          >
-            🎥
+    <div className="max-w-3xl mx-auto bg-card rounded-2xl p-6 mb-8 shadow-lg border border-border/60">
+      <h2 className="text-xl md:text-2xl font-bold mb-4 flex items-center gap-2">
+        <span className="inline-flex w-8 h-8 items-center justify-center rounded-full bg-primary/10">
+          🎥
+        </span>
+        Mi progreso como Streamer
+      </h2>
+
+      {/* Configurar progresión */}
+      <div className="bg-black/30 rounded-xl px-4 py-3 mb-6 border border-white/5">
+        <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
+          <div className="flex items-center gap-2 text-sm font-semibold">
+            <span className="inline-flex w-7 h-7 items-center justify-center rounded-full bg-muted">
+              ⚙️
+            </span>
+            <span>Configurar progresión</span>
           </div>
-          <h3 style={{ color: "#fff", margin: 0, fontSize: 20 }}>
-            Mi progreso como Streamer
-          </h3>
-        </div>
+          <div className="flex items-center gap-2 text-sm">
+            <span>Horas requeridas por nivel:</span>
+             {/* ⭐ Control con botones + y - */}
+  <div className="flex items-center gap-2">
+    <button
+      className="px-2 py-1 bg-muted rounded hover:bg-muted/80 text-lg font-bold"
+      onClick={() => {
+        const next = Math.max(1, horasRequeridas - 1);
+        handleChangeHorasRequeridas(next);
+      }}
+    >
+      –
+    </button>
 
-        {/* Configuración de horas por nivel (sigue siendo editable en frontend) */}
-        <div style={{ marginBottom: 12 }}>
-          <ConfigPanel
-            hoursPerLevel={hoursRequired}
-            setHoursPerLevel={setHoursRequired}
-          />
-        </div>
+    <div className="min-w-[40px] text-center font-semibold">
+      {horasRequeridas}
+    </div>
 
-        {/* Horas totales y nivel actual */}
-        <div style={{ marginBottom: 12 }}>
-          <TotalHours hoursDone={hoursDone} level={level} />
+    <button
+      className="px-2 py-1 bg-muted rounded hover:bg-muted/80 text-lg font-bold"
+      onClick={() => {
+        const next = horasRequeridas + 1;
+        handleChangeHorasRequeridas(next);
+      }}
+    >
+      +
+    </button>
+  </div>
+          </div>
         </div>
-
-        {/* Barra de progreso dentro del nivel */}
-        <div style={{ marginBottom: 6 }}>
-          <ProgressBar
-            hoursDone={hoursWithinLevel}
-            hoursRequired={hoursRequired}
-          />
-        </div>
-
-        <p
-          style={{
-            textAlign: "center",
-            marginTop: 12,
-            color: "#bdbdbd",
-            fontSize: 13,
-          }}
-        >
-          Las horas transmitidas se leen desde el backend
-          (sesiones finalizadas). Sigue haciendo lives para subir de nivel 💪
+        <p className="mt-2 text-xs text-muted-foreground">
+          Cambia este valor para ajustar qué tan rápido subes de nivel como
+          streamer.
         </p>
       </div>
 
-      <LevelUpAlert
-        open={showLevelUp}
-        level={level}
-        onClose={() => setShowLevelUp(false)}
-      />
-    </section>
+      {loading ? (
+        <p className="text-sm text-muted-foreground">
+          Cargando progreso de streamer...
+        </p>
+      ) : error ? (
+        <p className="text-sm text-red-400">{error}</p>
+      ) : (
+        <>
+          {/* Nivel actual */}
+          <div className="text-center mb-3 text-sm">
+            <span className="text-muted-foreground mr-1">Nivel actual:</span>
+            <span className="font-bold text-primary">
+              {nivelActual ?? 1}
+            </span>
+          </div>
+
+          {/* Barra de progreso usando tu componente */}
+          <ProgressBar
+            hoursDone={totalHoras}
+            hoursRequired={horasRequeridas}
+          />
+
+          <p className="mt-3 text-center text-xs text-muted-foreground">
+            Sigue haciendo lives para subir de nivel 💪
+          </p>
+
+          
+        </>
+      )}
+    </div>
   );
 };
+
+
 
 export default StreamerProgress;

@@ -26,7 +26,6 @@ const TotalHours: React.FC<TotalHoursProps> = ({ hoursDone, level }) => {
           WebkitTextFillColor: "transparent",
         }}
       >
-        Horas totales transmitidas: {hoursDone}
       </div>
     </div>
   );

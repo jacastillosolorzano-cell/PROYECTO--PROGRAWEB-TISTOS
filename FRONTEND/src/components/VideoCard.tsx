@@ -3,10 +3,26 @@ import { Heart, MessageCircle, Share2, Music2, Play } from "lucide-react";
 import type { Video } from "./VideoFeed";
 import MenuRegalos from "@/components/MenuRegalos";
 import CommentSection from "@/pages/ventanas/ComentSection";
+import { socket } from "@/lib/socket";
 
 interface VideoCardProps {
   video: Video;
   isActive: boolean;
+}
+
+// Tipo de mensaje de chat (por ahora sin nivel, el nivel lo maneja el backend)
+interface ChatMessage {
+  streamId: string;
+  userId: string;
+  nombre: string;
+  text: string;
+  timestamp: string;
+}
+
+// Tipo para el evento de subida de nivel
+interface LevelUpPayload {
+  nivel: string;   // nombre del nivel, ej: "Bronce", "Plata", etc.
+  orden: number;   // número de nivel, ej: 1,2,3...
 }
 
 const VideoCard = ({ video, isActive }: VideoCardProps) => {
@@ -15,6 +31,14 @@ const VideoCard = ({ video, isActive }: VideoCardProps) => {
   const videoRef = useRef<HTMLVideoElement>(null);
   const [isCommentModalOpen, setIsCommentModalOpen] = useState(false);
 
+  // 👇 Estado de nivel del espectador y popup de subida de nivel
+  const [nivelActual, setNivelActual] = useState<number | null>(null);
+  const [nombreNivelActual, setNombreNivelActual] = useState<string | null>(null);
+  const [showLevelPopup, setShowLevelPopup] = useState(false);
+
+  // ==============================
+  //  AUTOPLAY CUANDO ES ACTIVO
+  // ==============================
   useEffect(() => {
     if (!videoRef.current) return;
 
@@ -28,6 +52,98 @@ const VideoCard = ({ video, isActive }: VideoCardProps) => {
     }
   }, [isActive]);
 
+  // ==============================
+  //  JOIN AL CHAT DEL STREAM
+  // ==============================
+  useEffect(() => {
+    if (!isActive) return;
+    if (!video.sessionId) return; // cuando uses backend, este será el id real del stream
+
+    const rawUsuario = localStorage.getItem("usuario");
+    if (!rawUsuario) return;
+
+    try {
+      const usuario = JSON.parse(rawUsuario) as {
+        id_usuario: string;
+        nombre?: string;
+      };
+
+      socket.emit("chat:join", {
+        streamId: video.sessionId,
+        userId: usuario.id_usuario,
+        nombre: usuario.nombre ?? "Viewer",
+      });
+
+      console.log(
+        "👋 Viewer unido al chat del stream",
+        video.sessionId,
+        "como",
+        usuario.nombre
+      );
+    } catch (e) {
+      console.error("Error al parsear usuario:", e);
+    }
+  }, [isActive, video.sessionId]);
+
+  // ==============================
+  //  ESCUCHAR EVENTO level:up (HU: notificación al subir de nivel)
+  // ==============================
+  useEffect(() => {
+    const handleLevelUp = (data: LevelUpPayload) => {
+      console.log("🎉 level:up recibido", data);
+      setNivelActual(data.orden);
+      setNombreNivelActual(data.nivel || null);
+      setShowLevelPopup(true);
+
+      // Ocultar popup después de 3 segundos
+      const t = setTimeout(() => {
+        setShowLevelPopup(false);
+      }, 3000);
+
+      return () => clearTimeout(t);
+    };
+
+    socket.on("level:up", handleLevelUp);
+
+    return () => {
+      socket.off("level:up", handleLevelUp);
+    };
+  }, []);
+
+  // ==============================
+  //  ENVIAR MENSAJE DE CHAT (usa socket)
+  // ==============================
+  const handleSendChatMessage = (text: string) => {
+    if (!text.trim()) return;
+    if (!video.sessionId) return;
+
+    const rawUsuario = localStorage.getItem("usuario");
+    if (!rawUsuario) {
+      alert("Debes iniciar sesión para comentar");
+      return;
+    }
+
+    try {
+      const usuario = JSON.parse(rawUsuario) as {
+        id_usuario: string;
+        nombre?: string;
+      };
+
+      const payload: ChatMessage = {
+        streamId: video.sessionId,
+        userId: usuario.id_usuario,
+        nombre: usuario.nombre ?? "Viewer",
+        text: text.trim(),
+        timestamp: new Date().toISOString(),
+      };
+
+      socket.emit("chat:message", payload);
+      console.log("📤 chat:message enviado", payload);
+    } catch (e) {
+      console.error("Error al enviar mensaje de chat:", e);
+    }
+  };
+
   const toggleLike = () => {
     setIsLiked((prev) => {
       const next = !prev;
@@ -40,7 +156,6 @@ const VideoCard = ({ video, isActive }: VideoCardProps) => {
 
   // Inline component: placeholder para progreso del canal
   const ChannelProgressInline = ({ streamerId }: { streamerId?: string }) => {
-    // Más adelante puedes conectarlo a /usuarios/:id/progreso
     if (!streamerId) return null;
     return null;
   };
@@ -53,6 +168,17 @@ const VideoCard = ({ video, isActive }: VideoCardProps) => {
 
   return (
     <div className="snap-item relative h-screen w-screen bg-black">
+      {/* 🔔 Popup de subida de nivel */}
+      {showLevelPopup && (
+        <div className="fixed top-16 left-1/2 -translate-x-1/2 z-50 bg-purple-600/90 text-white px-4 py-2 rounded-2xl text-sm shadow-lg">
+          🎉 ¡Subiste al{" "}
+          {nombreNivelActual
+            ? `nivel ${nombreNivelActual}`
+            : `nivel ${nivelActual ?? ""}`}
+          !
+        </div>
+      )}
+
       {/* Video Background */}
       <div className="absolute inset-0">
         <video
@@ -153,8 +279,15 @@ const VideoCard = ({ video, isActive }: VideoCardProps) => {
 
       {/* Bottom Info */}
       <div className="absolute bottom-24 left-4 right-20 z-20 animate-slide-up">
-        <h3 className="text-white font-bold text-lg mb-1 text-shadow">
+        <h3 className="text-white font-bold text-lg mb-1 text-shadow flex items-center gap-2">
           @{video.username}
+          {/* Si ya tenemos nivel, mostramos una mini chip con el nivel del espectador */}
+          {nivelActual && (
+            <span className="inline-flex items-center px-2 py-0.5 rounded-full bg-purple-700/80 text-[10px] font-semibold">
+              Tu nivel:{" "}
+              {nombreNivelActual ? nombreNivelActual : `Lvl ${nivelActual}`}
+            </span>
+          )}
         </h3>
         <p className="text-white text-sm mb-2 text-shadow line-clamp-2">
           {video.caption}
@@ -167,13 +300,17 @@ const VideoCard = ({ video, isActive }: VideoCardProps) => {
         </div>
       </div>
 
-      {/* Modal comentarios (con sessionId como string) */}
+      {/* Modal comentarios */}
       {isCommentModalOpen && (
         <CommentSection
+          // para backend real, lo correcto es usar sessionId
           sessionId={
-            typeof video.id === "string" ? video.id : String(video.id)
+            video.sessionId ??
+            (typeof video.id === "string" ? video.id : String(video.id))
           }
           onClose={() => setIsCommentModalOpen(false)}
+          // callback para mandar mensaje por socket
+          onSendMessage={handleSendChatMessage}
         />
       )}
     </div>
