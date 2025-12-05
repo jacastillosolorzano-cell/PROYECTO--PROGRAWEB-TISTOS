@@ -182,4 +182,41 @@ router.get("/:id_usuario/progreso", async (req: Request, resp: Response) => {
   }
 });
 
+
+/// =========================================================
+//  NUEVO: Endpoint para registrar mensaje y sumar puntos
+//  (Soluciona el error 404 en ChatView)
+// =========================================================
+router.post("/:id_usuario/mensaje", async (req: Request, resp: Response) => {
+  try {
+    const { id_usuario } = req.params;
+    const { id_streamer } = req.body; // Puede ser null si es un chat genérico
+
+    // Buscamos si el usuario tiene progreso (con ese streamer o cualquiera)
+    const progreso = await prisma.progresoEspectador.findFirst({
+      where: {
+        id_espectador: id_usuario,
+        ...(id_streamer ? { id_streamer } : {}),
+      },
+    });
+
+    if (progreso) {
+      // Sumamos 1 punto
+      const actualizado = await prisma.progresoEspectador.update({
+        where: { id_progreso: progreso.id_progreso },
+        data: { puntos_actuales: { increment: 1 } },
+      });
+      return resp.status(200).json({ ok: true, puntos: actualizado.puntos_actuales });
+    }
+
+    // Si no tiene progreso, igual respondemos 200 para que no de error en el chat
+    return resp.status(200).json({ ok: true, message: "Mensaje enviado" });
+  } catch (error) {
+    console.error("Error al registrar mensaje:", error);
+    return resp.status(500).json({ error: "Error interno al registrar mensaje" });
+  }
+});
+
+
+
 export default router;

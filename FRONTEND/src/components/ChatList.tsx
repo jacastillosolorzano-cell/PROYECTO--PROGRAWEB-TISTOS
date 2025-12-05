@@ -1,8 +1,8 @@
 import React from "react";
 import { MessageSquare, Star } from "lucide-react";
 
-interface ChatItem {
-  id: number;
+export interface ChatItem {
+  id: string;
   nombre: string;
   mensaje: string;
   avatar?: string;

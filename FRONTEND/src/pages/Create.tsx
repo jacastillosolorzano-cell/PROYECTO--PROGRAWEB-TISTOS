@@ -28,8 +28,11 @@ interface ChatMessage {
 
 interface GiftInfo {
   nombre: string;
+  regalo: string;
   imagen: string;
+  multiplicador?: number;
 }
+
 
 const Create = () => {
   const navigate = useNavigate();
@@ -38,9 +41,9 @@ const Create = () => {
 
   const [messages, setMessages] = useState<ChatMessage[]>([]);
 
-  // 🎁 overlay de regalos
-  const [giftOverlay, setGiftOverlay] = useState<GiftInfo | null>(null);
-  const [giftVisible, setGiftVisible] = useState(false);
+const [giftOverlay, setGiftOverlay] = useState<GiftInfo | null>(null);
+const [giftVisible, setGiftVisible] = useState(false);
+
 
   // Link de compartir
   const [shareUrl, setShareUrl] = useState<string | null>(null);
@@ -74,20 +77,23 @@ const Create = () => {
       setMessages((prev) => [...prev, msg]);
     });
 
-    // 🎁 REGALO RECIBIDO EN TIEMPO REAL
-    socket.on("gift:received", (data) => {
-      console.log("🎁 regalo recibido:", data);
+  // 🎁 REGALO RECIBIDO EN TIEMPO REAL
+socket.on("gift:received", (data) => {
+  console.log("🎁 regalo recibido:", data);
 
-      setGiftOverlay({
-        nombre:
-          data.multiplicador && data.multiplicador > 1
-            ? `${data.regalo} x${data.multiplicador}`
-            : data.regalo,
-        imagen: data.imagen,
-      });
+  setGiftOverlay({
+    nombre: data.viewerName || data.usuario || "Espectador",
+    regalo:
+      data.multiplicador && data.multiplicador > 1
+        ? `${data.regalo} x${data.multiplicador}`
+        : data.regalo,
+    imagen: data.imagen,
+    multiplicador: data.multiplicador,
+  });
 
-      setGiftVisible(true);
-    });
+  setGiftVisible(true);
+});
+
 
     return () => {
       socket.off("connect");
@@ -257,10 +263,11 @@ const Create = () => {
     <div className="min-h-screen bg-background flex flex-col pb-20">
       {/* 🎁 Overlay de regalos */}
       <GiftOverlay
-        gift={giftOverlay}
-        visible={giftVisible}
-        onClose={() => setGiftVisible(false)}
-      />
+      gift={giftOverlay}
+      visible={giftVisible}
+      onClose={() => setGiftVisible(false)}
+    />
+
 
       {/* Header */}
       <div className="flex items-center gap-2 p-4">

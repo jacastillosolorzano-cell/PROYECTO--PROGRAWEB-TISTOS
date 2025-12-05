@@ -32,6 +32,7 @@ router.get(
         // Si nunca ha streameado, devolvemos base
         return res.json({
           total_hours: 0,
+          total_minutes: 0,
           nivel_actual: 1,
           hours_per_level: 10,
         });
@@ -51,6 +52,7 @@ router.get(
 
       res.json({
         total_hours: totalHours,
+        total_minutes: totalMinutes, 
         nivel_actual: nivelActual,
         hours_per_level: hoursPerLevel,
       });

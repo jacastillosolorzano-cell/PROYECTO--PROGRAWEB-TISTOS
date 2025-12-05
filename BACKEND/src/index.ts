@@ -22,7 +22,7 @@ import nivelesRouter from "./routes/niveles.routes.js";
 import notificacionesRouter from "./routes/notificaciones.routes.js";
 import recargasRouter from "./routes/recargas.routes.js";
 import streamerPerfilRouter from "./routes/streamerPerfil.routes.js";
-
+import chatRoutes from "./routes/chat.routes.js";
 import { recalcularNivelEspectador } from "./utils/niveles.js";
 
 dotenv.config();
@@ -56,7 +56,7 @@ app.use("/niveles", nivelesRouter);
 app.use("/notificaciones", notificacionesRouter);
 app.use("/recargas", recargasRouter);
 app.use("/streamers", streamerPerfilRouter);
-
+app.use("/chats", chatRoutes); 
 app.post("/login", loginHandler);
 app.post("/logout", logoutHandler);
 

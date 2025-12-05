@@ -6,7 +6,48 @@ import { recalcularNivelEspectador } from "../utils/niveles.js";
 const router = Router();
 
 // =================================================================
-//                   CHAT + PUNTOS POR MENSAJE
+//                 OBTENER LISTA DE CHATS (Streamers)
+// =================================================================
+// Esta es la ruta que te estaba dando 404
+router.get("/lista/:id_usuario", async (req: Request, resp: Response) => {
+  try {
+    const { id_usuario } = req.params;
+
+    // Buscamos en ProgresoEspectador para ver con qué streamers ha interactuado
+    const progresos = await prisma.progresoEspectador.findMany({
+      where: {
+        id_espectador: id_usuario,
+      },
+      include: {
+        streamer: {
+          select: {
+            id_usuario: true,
+            nombre: true,
+            // Agrega foto si la tienes en BD
+          },
+        },
+        nivel: true,
+      },
+    });
+
+    // Mapeamos a la estructura que espera el frontend
+    const chats = progresos.map((p) => ({
+      id: p.streamer.id_usuario,
+      nombre: p.streamer.nombre,
+      mensaje: `Nivel ${p.nivel?.orden ?? 1} • ${p.puntos_actuales} pts`,
+      level: p.nivel?.orden ?? 1,
+      // El avatar lo asigna el frontend aleatoriamente
+    }));
+
+    return resp.status(200).json(chats);
+  } catch (error) {
+    console.error("Error obteniendo lista de chats:", error);
+    return resp.status(500).json({ error: "Error al obtener chats" });
+  }
+});
+
+// =================================================================
+//                  CHAT + PUNTOS POR MENSAJE
 // =================================================================
 router.post("/:id_sesion/mensajes", async (req: Request, resp: Response) => {
   try {
@@ -35,7 +76,7 @@ router.post("/:id_sesion/mensajes", async (req: Request, resp: Response) => {
       },
     });
 
-    // 2. Sumar 1 punto en progresoEspectador para ese streamer
+    // 2. Sumar 1 punto en progresoEspectador
     await prisma.progresoEspectador.updateMany({
       where: {
         id_espectador,
@@ -48,10 +89,10 @@ router.post("/:id_sesion/mensajes", async (req: Request, resp: Response) => {
       },
     });
 
-    // 3. Recalcular nivel del espectador (podría generar notificación)
+    // 3. Recalcular nivel
     await recalcularNivelEspectador(id_espectador, sesion.id_streamer);
 
-    // 4. Devolver mensaje y progreso actualizado
+    // 4. Devolver respuesta
     const progresoActualizado = await prisma.progresoEspectador.findFirst({
       where: {
         id_espectador,

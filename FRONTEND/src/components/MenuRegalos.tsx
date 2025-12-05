@@ -7,7 +7,7 @@ import GiftOverlay from "@/pages/ventanas/GiftOverlay";
 import { BACKEND_URL } from "@/config";
 import { useSaldo } from "@/contexts/SaldoContext";
 
-import GiftGameModal from "@/components/GiftGameModal";
+import GiftGameModal from "@/components/GiftModal";
 
 import tombaImg from "@/components/imagenes/tomba.png";
 import dinaImg from "@/components/imagenes/Dina.png";
@@ -36,7 +36,7 @@ const getGiftImage = (nombre: string): string => {
   const n = nombre.toLowerCase().trim();
   if (n.includes("tomba")) return tombaImg;
   if (n.includes("dina")) return dinaImg;
-  return tombaImg;
+  return tombaImg || dinaImg; 
 };
 
 export default function MenuRegalos({ streamerId, sessionId }: MenuRegalosProps) {
@@ -235,16 +235,6 @@ export default function MenuRegalos({ streamerId, sessionId }: MenuRegalosProps)
         gift={overlayGift}
         visible={overlayVisible}
         onClose={() => setOverlayVisible(false)}
-      />
-
-      <GiftGameModal
-        open={gameOpen}
-        gift={regaloSeleccionado}
-        onClose={() => setGameOpen(false)}
-        onResult={(mult) => {
-          setGameOpen(false);
-          if (regaloSeleccionado) handleEnviarRegalo(regaloSeleccionado, mult);
-        }}
       />
     </div>
   );

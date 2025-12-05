@@ -22,7 +22,8 @@ interface Message {
   timestamp: string;
 }
 
-const ROULETTE_COST = 100; // puntos necesarios para jugar (backend igual)
+const ROULETTE_COST = 10; // puntos necesarios para jugar (backend igual)
+const POINTS_PER_MESSAGE = 1; // cuantos puntos ganas por cada mensaje (lo usa el backend)
 
 const ChatView: React.FC = () => {
   const navigate = useNavigate();
@@ -61,7 +62,13 @@ const ChatView: React.FC = () => {
   // ============================
   const getCurrentUser = () => {
     const raw = localStorage.getItem("usuario");
-    return raw ? JSON.parse(raw) as { id_usuario: string; nombre: string; email: string } : null;
+    return raw
+      ? (JSON.parse(raw) as {
+          id_usuario: string;
+          nombre: string;
+          email: string;
+        })
+      : null;
   };
 
   const currentUser = getCurrentUser();
@@ -70,35 +77,34 @@ const ChatView: React.FC = () => {
   //  Cargar puntos desde backend
   // ============================
   useEffect(() => {
-  const fetchPoints = async () => {
-    const user = getCurrentUser();
-    if (!user) return;
+    const fetchPoints = async () => {
+      const user = getCurrentUser();
+      if (!user) return;
 
-    try {
-      const resp = await fetch(
-        `${BACKEND_URL}/usuarios/${user.id_usuario}/progreso`
-      );
-      if (!resp.ok) return;
-      const data: any[] = await resp.json();
-
-      if (chat?.id) {
-        const prog = data.find((p) => p.id_streamer === chat.id);
-        setUserPoints(prog?.puntos_actuales ?? 0);
-      } else {
-        const total = data.reduce(
-          (acc, p) => acc + (p.puntos_actuales ?? 0),
-          0
+      try {
+        const resp = await fetch(
+          `${BACKEND_URL}/usuarios/${user.id_usuario}/progreso`
         );
-        setUserPoints(total);
+        if (!resp.ok) return;
+        const data: any[] = await resp.json();
+
+        if (chat?.id) {
+          const prog = data.find((p) => p.id_streamer === chat.id);
+          setUserPoints(prog?.puntos_actuales ?? 0);
+        } else {
+          const total = data.reduce(
+            (acc, p) => acc + (p.puntos_actuales ?? 0),
+            0
+          );
+          setUserPoints(total);
+        }
+      } catch (e) {
+        console.error("Error obteniendo progreso del usuario:", e);
       }
-    } catch (e) {
-      console.error("Error obteniendo progreso del usuario:", e);
-    }
-  };
+    };
 
-  fetchPoints();
-}, [chat?.id]);
-
+    fetchPoints();
+  }, [chat?.id]);
 
   // ============================
   //  Enviar mensaje
@@ -126,9 +132,7 @@ const ChatView: React.FC = () => {
     setMessages((m) => [...m, newMsg]);
     setText("");
 
-    // 2) Enviamos al backend para sumar 1 punto por mensaje
-    //    Aquí asumimos que chatId representa una sesión de streaming (id_sesion).
-    //    Si no es así, igual podrías usar otra ruta dedicada a puntos.
+    // 2) Enviamos al backend para sumar puntos por mensaje
     try {
       const resp = await fetch(
         `${BACKEND_URL}/usuarios/${usuario.id_usuario}/mensaje`,
@@ -136,39 +140,47 @@ const ChatView: React.FC = () => {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            id_streamer: null, // o más adelante el streamer real
+            id_streamer: chat?.id ?? null,
+            puntos_por_mensaje: POINTS_PER_MESSAGE, // opcional, si el backend lo usa
           }),
         }
       );
 
-      if (!resp.ok) {
-        const err = await resp.json().catch(() => ({}));
-        console.error("Error registrando mensaje en backend:", err);
-      } else {
-        toast?.({
-          title: "Ganaste 1 punto por mensaje",
-          duration: 1200,
-        });
+      const data = await resp.json().catch(() => ({} as any));
 
-        // refrescamos puntos desde backend
-        try {
-          const data = await resp.json();
-          // si el backend devuelve progreso, podrías usarlo aquí;
-          // por ahora recargamos con la misma función
-        } catch {
-          // ignoramos y recargamos completo
+      if (!resp.ok) {
+        console.error("Error registrando mensaje en backend:", data);
+        return;
+      }
+
+      // 3) Si el backend devuelve puntos_actuales, lo usamos directamente
+      if (typeof data.puntos_actuales === "number") {
+        setUserPoints(data.puntos_actuales);
+      }
+      // Si devuelve una lista tipo /progreso, la usamos igual
+      else if (Array.isArray(data)) {
+        if (chat?.id) {
+          const prog = data.find((p: any) => p.id_streamer === chat.id);
+          setUserPoints(prog?.puntos_actuales ?? 0);
+        } else {
+          const total = data.reduce(
+            (acc: number, p: any) => acc + (p.puntos_actuales ?? 0),
+            0
+          );
+          setUserPoints(total);
         }
-        // recargar progreso completo
+      } else {
+        // 4) Fallback: recargar progreso completo
         const respProg = await fetch(
           `${BACKEND_URL}/usuarios/${usuario.id_usuario}/progreso`
         );
         if (respProg.ok) {
-          const data: any[] = await respProg.json();
+          const progs: any[] = await respProg.json();
           if (chat?.id) {
-            const prog = data.find((p) => p.id_streamer === chat.id);
+            const prog = progs.find((p) => p.id_streamer === chat.id);
             setUserPoints(prog?.puntos_actuales ?? 0);
           } else {
-            const total = data.reduce(
+            const total = progs.reduce(
               (acc, p) => acc + (p.puntos_actuales ?? 0),
               0
             );
@@ -176,6 +188,11 @@ const ChatView: React.FC = () => {
           }
         }
       }
+
+      toast?.({
+        title: "Ganaste puntos por mensaje",
+        duration: 1200,
+      });
     } catch (e) {
       console.error("Error al conectar con backend de mensajes:", e);
     }
@@ -185,94 +202,92 @@ const ChatView: React.FC = () => {
   //  Resultado de ruleta
   // ============================
   const handleRoulettePlay = async () => {
-  const usuario = getCurrentUser();
-  if (!usuario) {
-    toast?.({ title: "Inicia sesión para jugar", duration: 2000 });
-    throw new Error("Inicia sesión para jugar");
-  }
+    const usuario = getCurrentUser();
+    if (!usuario) {
+      toast?.({ title: "Inicia sesión para jugar", duration: 2000 });
+      throw new Error("Inicia sesión para jugar");
+    }
 
-  try {
-    const res = await fetch(`${BACKEND_URL}/ruleta/jugar`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        id_espectador: usuario.id_usuario,
-        puntos_apostados: ROULETTE_COST,
-        id_streamer: chat?.id || null,
-      }),
-    });
+    try {
+      const res = await fetch(`${BACKEND_URL}/ruleta/jugar`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          id_espectador: usuario.id_usuario,
+          puntos_apostados: ROULETTE_COST,
+          id_streamer: chat?.id || null,
+        }),
+      });
 
-    const data = await res.json().catch(() => ({} as any));
+      const data = await res.json().catch(() => ({} as any));
 
-    if (!res.ok) {
+      if (!res.ok) {
+        const msg =
+          data.error ||
+          "Error al procesar la ruleta (¿tienes suficientes puntos?)";
+        toast?.({ title: msg, duration: 2000 });
+        throw new Error(msg);
+      }
+
+      // Actualizar puntos del usuario (puntos_actuales)
+      if (typeof data.puntos_actuales === "number") {
+        setUserPoints(data.puntos_actuales);
+      } else {
+        // fallback: recargar progreso completo
+        const respProg = await fetch(
+          `${BACKEND_URL}/usuarios/${usuario.id_usuario}/progreso`
+        );
+        if (respProg.ok) {
+          const progresos: any[] = await respProg.json();
+          if (chat?.id) {
+            const prog = progresos.find((p) => p.id_streamer === chat.id);
+            setUserPoints(prog?.puntos_actuales ?? 0);
+          } else {
+            const total = progresos.reduce(
+              (acc, p) => acc + (p.puntos_actuales ?? 0),
+              0
+            );
+            setUserPoints(total);
+          }
+        }
+      }
+
+      // Actualizar saldo global (monedas)
+      await refrescarSaldo();
+
+      // Overlay animado
+      window.dispatchEvent(
+        new CustomEvent("tistos:overlay", {
+          detail: {
+            type: "gift",
+            from: usuario.nombre ?? usuario.email ?? "Anon",
+            giftName: `Ruleta (+${data.monedas_ganadas} monedas)`,
+            points: data.monedas_ganadas,
+            multiplier: 0,
+          },
+        })
+      );
+
+      // Toast de éxito
+      toast?.({
+        title: `¡Ganaste ${data.monedas_ganadas} monedas!`,
+        description: `Resultado: ${data.resultado_segmento}`,
+        duration: 2000,
+      });
+
+      // 👉 Esto es lo que usará la ruleta visual
+      return {
+        resultado_segmento: data.resultado_segmento as string,
+        monedas_ganadas: data.monedas_ganadas as number,
+      };
+    } catch (error: any) {
+      console.error(error);
       const msg =
-        data.error ||
-        "Error al procesar la ruleta (¿tienes suficientes puntos?)";
+        error?.message || "Error al procesar la ruleta. Inténtalo de nuevo.";
       toast?.({ title: msg, duration: 2000 });
       throw new Error(msg);
     }
-
-    // Actualizar puntos del usuario (puntos_actuales)
-    if (typeof data.puntos_actuales === "number") {
-      setUserPoints(data.puntos_actuales);
-    } else {
-      // fallback: recargar progreso completo
-      const respProg = await fetch(
-        `${BACKEND_URL}/usuarios/${usuario.id_usuario}/progreso`
-      );
-      if (respProg.ok) {
-        const progresos: any[] = await respProg.json();
-        if (chat?.id) {
-          const prog = progresos.find((p) => p.id_streamer === chat.id);
-          setUserPoints(prog?.puntos_actuales ?? 0);
-        } else {
-          const total = progresos.reduce(
-            (acc, p) => acc + (p.puntos_actuales ?? 0),
-            0
-          );
-          setUserPoints(total);
-        }
-      }
-    }
-
-    // Actualizar saldo global (monedas)
-    await refrescarSaldo();
-
-    // Overlay animado
-    window.dispatchEvent(
-      new CustomEvent("tistos:overlay", {
-        detail: {
-          type: "gift",
-          from: usuario.nombre ?? usuario.email ?? "Anon",
-          giftName: `Ruleta (+${data.monedas_ganadas} monedas)`,
-          points: data.monedas_ganadas,
-          multiplier: 0,
-        },
-      })
-    );
-
-    // Toast de éxito
-    toast?.({
-      title: `¡Ganaste ${data.monedas_ganadas} monedas!`,
-      description: `Resultado: ${data.resultado_segmento}`,
-      duration: 2000,
-    });
-
-    // 👉 Esto es lo que usará la ruleta visual
-    return {
-      resultado_segmento: data.resultado_segmento as string,
-      monedas_ganadas: data.monedas_ganadas as number,
-    };
-  } catch (error: any) {
-    console.error(error);
-    const msg =
-      error?.message || "Error al procesar la ruleta. Inténtalo de nuevo.";
-    toast?.({ title: msg, duration: 2000 });
-    // re-lanzamos para que RouletteModal muestre error en su panel de "Resultado"
-    throw new Error(msg);
-  }
-};
-
+  };
 
   // ============================
   //  Render
@@ -420,7 +435,6 @@ const ChatView: React.FC = () => {
         onClose={() => setRouletteOpen(false)}
         onPlay={handleRoulettePlay}
       />
-
     </div>
   );
 };
